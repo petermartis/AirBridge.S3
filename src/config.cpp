@@ -21,6 +21,11 @@ void config_load(APConfig &cfg) {
     cfg.uplink_ssid  = prefs.getString("rep_ssid", "");
     cfg.uplink_pass  = prefs.getString("rep_pass", "");
 
+    // Display options
+    cfg.show_title = prefs.getBool("show_ttl", true);
+    cfg.show_cpu   = prefs.getBool("show_cpu", true);
+    cfg.show_mem   = prefs.getBool("show_mem", true);
+
     prefs.end();
 }
 
@@ -41,6 +46,11 @@ void config_save(const APConfig &cfg) {
     prefs.putBool("rep_on", cfg.repeater_on);
     prefs.putString("rep_ssid", cfg.uplink_ssid);
     prefs.putString("rep_pass", cfg.uplink_pass);
+
+    // Display options
+    prefs.putBool("show_ttl", cfg.show_title);
+    prefs.putBool("show_cpu", cfg.show_cpu);
+    prefs.putBool("show_mem", cfg.show_mem);
 
     prefs.end();
 }

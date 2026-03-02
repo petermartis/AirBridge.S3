@@ -110,6 +110,29 @@ static const char HTML_PAGE[] PROGMEM = R"rawhtml(
       <input type="password" name="rep_pass" value="%REP_PASS%" maxlength="63">
     </div>
 
+    <h2>&#128187; Display</h2>
+    <div class="toggle">
+      <label class="toggle">
+        <input type="checkbox" name="show_title" value="1" %TITLE_CHK%>
+        <div class="slider"></div>
+        <span>Title Bar</span>
+      </label>
+    </div>
+    <div class="toggle">
+      <label class="toggle">
+        <input type="checkbox" name="show_cpu" value="1" %CPU_CHK%>
+        <div class="slider"></div>
+        <span>CPU Usage</span>
+      </label>
+    </div>
+    <div class="toggle">
+      <label class="toggle">
+        <input type="checkbox" name="show_mem" value="1" %MEM_CHK%>
+        <div class="slider"></div>
+        <span>Memory Usage</span>
+      </label>
+    </div>
+
     <button type="submit">&#128260; Save &amp; Reboot</button>
   </form>
   <p class="note">Device will reboot after saving. Reconnect to the new SSID.</p>
@@ -248,6 +271,11 @@ static String build_page() {
         page.replace("%STA_TEXT%", "Repeater disabled");
     }
 
+    // Display options
+    page.replace("%TITLE_CHK%", current_cfg->show_title ? "checked" : "");
+    page.replace("%CPU_CHK%",   current_cfg->show_cpu   ? "checked" : "");
+    page.replace("%MEM_CHK%",   current_cfg->show_mem   ? "checked" : "");
+
     return page;
 }
 
@@ -298,6 +326,11 @@ static void handle_save(WiFiClient &client, const String &body) {
     current_cfg->repeater_on  = (rep_on_str == "1");
     current_cfg->uplink_ssid  = rep_ssid;
     current_cfg->uplink_pass  = rep_pass;
+
+    // Display options
+    current_cfg->show_title = (get_form_field(body, "show_title") == "1");
+    current_cfg->show_cpu   = (get_form_field(body, "show_cpu")   == "1");
+    current_cfg->show_mem   = (get_form_field(body, "show_mem")   == "1");
 
     config_save(*current_cfg);
 

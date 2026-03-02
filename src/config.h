@@ -12,6 +12,11 @@ struct APConfig {
     bool     repeater_on;   // enable WiFi-to-WiFi repeater
     String   uplink_ssid;   // upstream network SSID
     String   uplink_pass;   // upstream network password
+
+    // Display options
+    bool     show_title;    // show title bar on LCD
+    bool     show_cpu;      // show CPU% in title bar
+    bool     show_mem;      // show free heap in title bar
 };
 
 // Load config from NVS (fills defaults if no saved config)
