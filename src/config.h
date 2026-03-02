@@ -7,6 +7,11 @@ struct APConfig {
     uint8_t  ip[4];         // e.g. {192,168,1,1}
     uint8_t  dhcp_start;    // last octet of range start
     uint8_t  dhcp_end;      // last octet of range end
+
+    // WiFi repeater (STA uplink)
+    bool     repeater_on;   // enable WiFi-to-WiFi repeater
+    String   uplink_ssid;   // upstream network SSID
+    String   uplink_pass;   // upstream network password
 };
 
 // Load config from NVS (fills defaults if no saved config)

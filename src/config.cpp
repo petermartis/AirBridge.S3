@@ -16,6 +16,11 @@ void config_load(APConfig &cfg) {
     cfg.dhcp_start = prefs.getUChar("dhcp_s", 2);
     cfg.dhcp_end   = prefs.getUChar("dhcp_e", 255);
 
+    // WiFi repeater
+    cfg.repeater_on  = prefs.getBool("rep_on", false);
+    cfg.uplink_ssid  = prefs.getString("rep_ssid", "");
+    cfg.uplink_pass  = prefs.getString("rep_pass", "");
+
     prefs.end();
 }
 
@@ -31,6 +36,11 @@ void config_save(const APConfig &cfg) {
     prefs.putUChar("ip3", cfg.ip[3]);
     prefs.putUChar("dhcp_s", cfg.dhcp_start);
     prefs.putUChar("dhcp_e", cfg.dhcp_end);
+
+    // WiFi repeater
+    prefs.putBool("rep_on", cfg.repeater_on);
+    prefs.putString("rep_ssid", cfg.uplink_ssid);
+    prefs.putString("rep_pass", cfg.uplink_pass);
 
     prefs.end();
 }

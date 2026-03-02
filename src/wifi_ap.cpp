@@ -5,29 +5,23 @@
 #include <esp_log.h>
 #include <lwip/ip4_addr.h>
 
+static const char *TAG = "WiFi";
+
 void wifi_ap_init(const APConfig &cfg) {
     // Configure static IP for the AP
     IPAddress local_ip(cfg.ip[0], cfg.ip[1], cfg.ip[2], cfg.ip[3]);
     IPAddress gateway(cfg.ip[0], cfg.ip[1], cfg.ip[2], cfg.ip[3]);
     IPAddress subnet(255, 255, 255, 0);
 
-    WiFi.mode(WIFI_AP);
+    // Use AP+STA if repeater is enabled, otherwise AP only
+    WiFi.mode(cfg.repeater_on ? WIFI_AP_STA : WIFI_AP);
     WiFi.softAPConfig(local_ip, gateway, subnet);
     WiFi.softAP(cfg.ssid.c_str(), cfg.password.c_str(), 1, 0, 10);
 
-    // NOTE: DHCP range customization is intentionally not done here.
-    // The Arduino-ESP32 core already starts a DHCP server for SoftAP based on
-    // the IP/netmask set via WiFi.softAPConfig().
-    //
-    // We previously attempted to poke esp_netif DHCP options here, but that can
-    // produce errors on some core versions and may contribute to instability.
-    // We'll implement explicit DHCP lease-range control in a follow-up using
-    // the correct DHCP server APIs.
-
-    ESP_LOGI("WiFi", "AP started: SSID=%s IP=%s DHCP=%d-%d",
+    ESP_LOGI(TAG, "AP started: SSID=%s IP=%s mode=%s",
         cfg.ssid.c_str(),
         config_ip_str(cfg.ip).c_str(),
-        cfg.dhcp_start, cfg.dhcp_end);
+        cfg.repeater_on ? "AP+STA" : "AP");
 }
 
 int wifi_ap_client_count() {
@@ -68,4 +62,54 @@ int wifi_ap_get_clients(ClientInfo *out, int max_clients) {
     }
 
     return count;
+}
+
+// ---------------------------------------------------------------------------
+// WiFi STA uplink (repeater mode)
+// ---------------------------------------------------------------------------
+
+void wifi_sta_start(const String &ssid, const String &pass) {
+    if (ssid.length() == 0) {
+        ESP_LOGW(TAG, "STA start skipped: no uplink SSID configured");
+        return;
+    }
+    ESP_LOGI(TAG, "STA connecting to: %s", ssid.c_str());
+    WiFi.begin(ssid.c_str(), pass.c_str());
+}
+
+bool wifi_sta_is_connected() {
+    return WiFi.isConnected();
+}
+
+int wifi_sta_rssi() {
+    if (!WiFi.isConnected()) return 0;
+    return WiFi.RSSI();
+}
+
+String wifi_sta_ip_str() {
+    if (!WiFi.isConnected()) return "";
+    return WiFi.localIP().toString();
+}
+
+String wifi_scan_networks() {
+    ESP_LOGI(TAG, "Starting WiFi scan...");
+    int n = WiFi.scanNetworks(false, false, false, 300);
+    String json = "[";
+    for (int i = 0; i < n; i++) {
+        if (i > 0) json += ",";
+        json += "{\"ssid\":\"";
+        // Escape any quotes in SSID
+        String ssid = WiFi.SSID(i);
+        ssid.replace("\"", "\\\"");
+        json += ssid;
+        json += "\",\"rssi\":";
+        json += String(WiFi.RSSI(i));
+        json += ",\"enc\":";
+        json += (WiFi.encryptionType(i) != WIFI_AUTH_OPEN) ? "true" : "false";
+        json += "}";
+    }
+    json += "]";
+    WiFi.scanDelete();
+    ESP_LOGI(TAG, "Scan found %d networks", n);
+    return json;
 }

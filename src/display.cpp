@@ -2,6 +2,7 @@
 #include "LGFX_Config.h"
 #include "usb_net.h"
 #include "nat.h"
+#include "sysmon.h"
 
 static LGFX tft;
 static LGFX_Sprite sprite(&tft);
@@ -50,6 +51,7 @@ static void draw_separator(LGFX_Sprite &s, int y) {
 }
 
 void display_update(const APConfig &cfg, bool usb_online,
+                    bool sta_connected, int sta_rssi,
                     ClientInfo *clients, int client_count)
 {
     // Draw to off-screen sprite, then push in one shot (no flicker)
@@ -98,23 +100,51 @@ void display_update(const APConfig &cfg, bool usb_online,
     draw_separator(sprite, y + 1);
     y += 4;
 
-    // ---- USB Status ----
+    // ---- Uplink Status (USB + STA) ----
     sprite.setTextFont(1);
     sprite.setTextColor(COL_LABEL, COL_BG);
     sprite.drawString("USB:", 2, y);
     if (usb_online) {
         sprite.setTextColor(COL_USB_ON, COL_BG);
-        sprite.drawString("Online (NAT)", 28, y);
+        sprite.drawString("Online", 28, y);
     } else {
         sprite.setTextColor(COL_USB_OFF, COL_BG);
         sprite.drawString("Offline", 28, y);
+    }
+    y += 10;
+
+    sprite.setTextColor(COL_LABEL, COL_BG);
+    sprite.drawString("STA:", 2, y);
+    if (sta_connected) {
+        sprite.setTextColor(COL_USB_ON, COL_BG);
+        char sta_buf[32];
+        snprintf(sta_buf, sizeof(sta_buf), "Connected %ddBm", sta_rssi);
+        sprite.drawString(sta_buf, 28, y);
+    } else if (cfg.repeater_on) {
+        sprite.setTextColor(COL_USB_OFF, COL_BG);
+        sprite.drawString("Connecting...", 28, y);
+    } else {
+        sprite.setTextColor(COL_NOCONN, COL_BG);
+        sprite.drawString("Off", 28, y);
+    }
+    y += 10;
+
+    // NAT status
+    sprite.setTextColor(COL_LABEL, COL_BG);
+    sprite.drawString("NAT:", 2, y);
+    if (nat_is_active()) {
+        sprite.setTextColor(COL_USB_ON, COL_BG);
+        sprite.drawString("Active", 28, y);
+    } else {
+        sprite.setTextColor(COL_USB_OFF, COL_BG);
+        sprite.drawString("Off", 28, y);
     }
     y += 12;
 
     draw_separator(sprite, y + 1);
     y += 4;
 
-    // ---- Connected Clients header ----
+    // ---- Connected Clients ----
     sprite.setTextFont(1);
     sprite.setTextColor(COL_LABEL, COL_BG);
     {
@@ -124,31 +154,15 @@ void display_update(const APConfig &cfg, bool usb_online,
     }
     y += 12;
 
-    // ---- Debug: USB/NAT status ----
-    draw_separator(sprite, y + 1);
-    y += 4;
-    sprite.setTextFont(1);
-    sprite.setTextColor(0x7BEF, COL_BG);  // light gray
-    sprite.drawString(usb_net_status_msg(), 2, y);
-    y += 10;
-    if (nat_is_active()) {
-        sprite.setTextColor(COL_USB_ON, COL_BG);
-        sprite.drawString("NAT: active", 2, y);
-    } else {
-        sprite.setTextColor(COL_USB_OFF, COL_BG);
-        sprite.drawString("NAT: off", 2, y);
-    }
-    y += 12;
-    draw_separator(sprite, y + 1);
-    y += 4;
+    // Reserve space for system stats footer (2 lines = ~20px)
+    int footer_y = SCREEN_H - 20;
 
     if (client_count == 0) {
         sprite.setTextColor(COL_NOCONN, COL_BG);
         sprite.drawString("No devices", 2, y);
     } else {
-        // ---- Client list ----
         sprite.setTextFont(1);
-        for (int i = 0; i < client_count && y < (SCREEN_H - 16); i++) {
+        for (int i = 0; i < client_count && y < (footer_y - 12); i++) {
             sprite.setTextColor(COL_IP, COL_BG);
             char ip_str[16];
             snprintf(ip_str, sizeof(ip_str), "%d.%d.%d.%d",
@@ -163,6 +177,17 @@ void display_update(const APConfig &cfg, bool usb_online,
             sprite.drawString(host, 8, y);
             y += 12;
         }
+    }
+
+    // ---- System Stats Footer (always visible, pinned to bottom) ----
+    draw_separator(sprite, footer_y - 2);
+    sprite.setTextFont(1);
+    sprite.setTextColor(COL_HOST, COL_BG);  // light gray
+    {
+        char stats[32];
+        snprintf(stats, sizeof(stats), "CPU:%d%%  MEM:%dkB",
+                 sysmon_cpu_percent(), sysmon_free_heap_kb());
+        sprite.drawString(stats, 2, footer_y);
     }
 
     // Push entire frame to display at once

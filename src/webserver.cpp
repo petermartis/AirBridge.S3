@@ -1,4 +1,6 @@
 #include "webserver.h"
+#include "wifi_ap.h"
+#include "usb_net.h"
 #include <WiFi.h>
 #include <WiFiClient.h>
 
@@ -6,8 +8,6 @@ static WiFiServer http_server(80);
 static APConfig *current_cfg = nullptr;
 
 // ---- Embedded HTML page ----
-// NOTE: We avoid snprintf() into a fixed-size buffer because it truncated the page
-// (hiding the Save & Reboot button on some clients).
 static const char HTML_PAGE[] PROGMEM = R"rawhtml(
 <!DOCTYPE html>
 <html>
@@ -22,27 +22,51 @@ static const char HTML_PAGE[] PROGMEM = R"rawhtml(
   .card { background: #16213e; border-radius: 12px; padding: 24px; width: 100%;
           max-width: 520px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
   h1 { text-align: center; margin-bottom: 20px; color: #0ff; font-size: 1.4em; }
+  h2 { color: #0ff; font-size: 1.1em; margin-top: 20px; padding-top: 16px;
+       border-top: 1px solid #333; }
   label { display: block; margin-top: 14px; font-size: 0.85em; color: #aaa; }
-  input[type=text], input[type=number] {
+  input[type=text], input[type=number], input[type=password], select {
     width: 100%; padding: 10px; margin-top: 4px; border: 1px solid #333;
     border-radius: 6px; background: #0f3460; color: #fff; font-size: 1em;
   }
-  input:focus { outline: none; border-color: #0ff; }
+  input:focus, select:focus { outline: none; border-color: #0ff; }
   .range-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .range-row input { width: 92px; }
   .range-row span { color: #888; }
-  button {
+  button, .btn {
     width: 100%; margin-top: 24px; padding: 14px; border: none;
     border-radius: 8px; background: #e94560; color: #fff; font-size: 1.1em;
     font-weight: bold; cursor: pointer; transition: background 0.2s;
   }
-  button:hover { background: #c0392b; }
+  button:hover, .btn:hover { background: #c0392b; }
+  .btn-scan { background: #0f3460; margin-top: 10px; padding: 10px; font-size: 0.9em; }
+  .btn-scan:hover { background: #1a4a8a; }
   .note { text-align: center; margin-top: 12px; font-size: 0.75em; color: #666; }
+  /* Toggle switch */
+  .toggle { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+  .toggle input { display: none; }
+  .toggle .slider { width: 48px; height: 26px; background: #333; border-radius: 13px;
+    position: relative; cursor: pointer; transition: background 0.3s; }
+  .toggle .slider::after { content: ''; position: absolute; width: 22px; height: 22px;
+    background: #888; border-radius: 50%; top: 2px; left: 2px; transition: 0.3s; }
+  .toggle input:checked + .slider { background: #0f9; }
+  .toggle input:checked + .slider::after { left: 24px; background: #fff; }
+  .toggle span { font-size: 0.9em; }
+  /* STA status indicator */
+  .sta-status { margin-top: 10px; padding: 8px 12px; border-radius: 6px;
+    background: #0f3460; font-size: 0.85em; }
+  .sta-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    margin-right: 6px; }
+  .sta-dot.on { background: #0f9; }
+  .sta-dot.off { background: #e94560; }
+  /* Repeater fields hidden when off */
+  .rep-fields { display: none; }
+  .rep-fields.show { display: block; }
 </style>
 </head>
 <body>
 <div class="card">
-  <h1>&#128225; AirBridge.S3 Settings</h1>
+  <h1>&#128225; AirBridge.S3</h1>
   <form method="POST" action="/save">
     <label>SSID</label>
     <input type="text" name="ssid" value="%SSID%" maxlength="31" required>
@@ -62,10 +86,63 @@ static const char HTML_PAGE[] PROGMEM = R"rawhtml(
       <input type="number" name="dhcp_e" value="%DE%" min="2" max="255" required>
     </div>
 
+    <h2>&#128246; WiFi Repeater</h2>
+    <div class="toggle">
+      <label class="toggle">
+        <input type="checkbox" name="rep_on" value="1" id="repToggle" %REP_CHK%>
+        <div class="slider"></div>
+        <span>Enable WiFi Repeater</span>
+      </label>
+    </div>
+
+    <div id="staStatus" class="sta-status">
+      <span class="sta-dot %STA_DOT%"></span>%STA_TEXT%
+    </div>
+
+    <div id="repFields" class="rep-fields %REP_SHOW%">
+      <label>Upstream Network</label>
+      <select name="rep_ssid" id="repSsid">
+        <option value="%REP_SSID%">%REP_SSID_DISPLAY%</option>
+      </select>
+      <div class="btn-scan" onclick="doScan()">&#128269; Scan Networks</div>
+
+      <label>Upstream Password</label>
+      <input type="password" name="rep_pass" value="%REP_PASS%" maxlength="63">
+    </div>
+
     <button type="submit">&#128260; Save &amp; Reboot</button>
   </form>
   <p class="note">Device will reboot after saving. Reconnect to the new SSID.</p>
 </div>
+<script>
+var repToggle = document.getElementById('repToggle');
+var repFields = document.getElementById('repFields');
+repToggle.addEventListener('change', function() {
+  repFields.classList.toggle('show', this.checked);
+});
+function doScan() {
+  var sel = document.getElementById('repSsid');
+  sel.innerHTML = '<option value="">Scanning...</option>';
+  fetch('/scan').then(r => r.json()).then(nets => {
+    sel.innerHTML = '';
+    if (nets.length === 0) {
+      sel.innerHTML = '<option value="">No networks found</option>';
+      return;
+    }
+    var cur = '%REP_SSID%';
+    nets.sort((a,b) => b.rssi - a.rssi);
+    nets.forEach(n => {
+      var o = document.createElement('option');
+      o.value = n.ssid;
+      o.textContent = n.ssid + ' (' + n.rssi + 'dBm' + (n.enc ? ', secured' : '') + ')';
+      if (n.ssid === cur) o.selected = true;
+      sel.appendChild(o);
+    });
+  }).catch(() => {
+    sel.innerHTML = '<option value="">Scan failed</option>';
+  });
+}
+</script>
 </body>
 </html>
 )rawhtml";
@@ -148,6 +225,29 @@ static String build_page() {
     page.replace("%DS%", String(current_cfg->dhcp_start));
     page.replace("%DE%", String(current_cfg->dhcp_end));
 
+    // Repeater fields
+    page.replace("%REP_CHK%", current_cfg->repeater_on ? "checked" : "");
+    page.replace("%REP_SHOW%", current_cfg->repeater_on ? "show" : "");
+    page.replace("%REP_SSID%", current_cfg->uplink_ssid);
+    page.replace("%REP_SSID_DISPLAY%",
+        current_cfg->uplink_ssid.length() > 0 ? current_cfg->uplink_ssid : String("(none)"));
+    page.replace("%REP_PASS%", current_cfg->uplink_pass);
+
+    // STA status indicator
+    bool sta_up = wifi_sta_is_connected();
+    if (sta_up) {
+        page.replace("%STA_DOT%", "on");
+        String txt = "Connected to " + current_cfg->uplink_ssid +
+                     " (" + String(wifi_sta_rssi()) + "dBm)";
+        page.replace("%STA_TEXT%", txt);
+    } else if (current_cfg->repeater_on) {
+        page.replace("%STA_DOT%", "off");
+        page.replace("%STA_TEXT%", "Disconnected");
+    } else {
+        page.replace("%STA_DOT%", "off");
+        page.replace("%STA_TEXT%", "Repeater disabled");
+    }
+
     return page;
 }
 
@@ -182,14 +282,22 @@ static void handle_save(WiFiClient &client, const String &body) {
         return;
     }
 
-    current_cfg->ssid       = ssid;
-    current_cfg->password   = pass;
-    current_cfg->ip[0]      = ip[0];
-    current_cfg->ip[1]      = ip[1];
-    current_cfg->ip[2]      = ip[2];
-    current_cfg->ip[3]      = ip[3];
-    current_cfg->dhcp_start = (uint8_t)ds;
-    current_cfg->dhcp_end   = (uint8_t)de;
+    // Repeater fields
+    String rep_on_str = get_form_field(body, "rep_on");
+    String rep_ssid   = get_form_field(body, "rep_ssid");
+    String rep_pass   = get_form_field(body, "rep_pass");
+
+    current_cfg->ssid         = ssid;
+    current_cfg->password     = pass;
+    current_cfg->ip[0]        = ip[0];
+    current_cfg->ip[1]        = ip[1];
+    current_cfg->ip[2]        = ip[2];
+    current_cfg->ip[3]        = ip[3];
+    current_cfg->dhcp_start   = (uint8_t)ds;
+    current_cfg->dhcp_end     = (uint8_t)de;
+    current_cfg->repeater_on  = (rep_on_str == "1");
+    current_cfg->uplink_ssid  = rep_ssid;
+    current_cfg->uplink_pass  = rep_pass;
 
     config_save(*current_cfg);
 
@@ -210,7 +318,7 @@ void webserver_init(APConfig &cfg) {
 }
 
 void webserver_handle() {
-    WiFiClient client = http_server.available();
+    WiFiClient client = http_server.accept();
     if (!client) return;
 
     // Wait for data
@@ -261,6 +369,18 @@ void webserver_handle() {
     // Route
     if (is_post && path == "/save") {
         handle_save(client, body);
+    } else if (path == "/scan") {
+        String json = wifi_scan_networks();
+        send_response(client, 200, "application/json", json);
+    } else if (path == "/status") {
+        String json = "{\"sta_connected\":";
+        json += wifi_sta_is_connected() ? "true" : "false";
+        json += ",\"sta_rssi\":";
+        json += String(wifi_sta_rssi());
+        json += ",\"usb_online\":";
+        json += usb_net_is_online() ? "true" : "false";
+        json += "}";
+        send_response(client, 200, "application/json", json);
     } else {
         handle_root(client);
     }

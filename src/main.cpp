@@ -5,8 +5,9 @@
 // Features:
 //   - WiFi AP with configurable SSID/password
 //   - USB NCM tethering for internet via host PC
-//   - NAT/NAPT between USB uplink and WiFi clients
-//   - Status display (SSID, password, USB/NAT state, clients)
+//   - WiFi repeater (STA uplink to upstream network)
+//   - NAT/NAPT between uplink(s) and WiFi clients
+//   - Status display with CPU/memory monitoring
 //   - Web configuration UI
 //
 
@@ -23,7 +24,9 @@
 static APConfig g_cfg;
 static ClientInfo g_clients[10];
 static int g_client_count = 0;
-static bool g_prev_usb_online = false;
+
+// Track previous uplink states for NAT enable/disable
+static bool g_prev_has_uplink = false;
 
 // Display refresh interval (ms)
 static const unsigned long DISPLAY_INTERVAL = 2000;
@@ -34,17 +37,25 @@ void setup() {
     display_init();
     display_boot_screen();
 
-    // 2. Config + WiFi AP
+    // 2. Config + WiFi AP (uses AP+STA mode if repeater is on)
     config_load(g_cfg);
     wifi_ap_init(g_cfg);
+
+    // 3. Start STA uplink if repeater is enabled
+    if (g_cfg.repeater_on) {
+        wifi_sta_start(g_cfg.uplink_ssid, g_cfg.uplink_pass);
+    }
+
+    // 4. USB NCM + web server
     usb_net_init();
     webserver_init(g_cfg);
 
-    // 3. Initial display update
+    // 5. Initial display update
     delay(500);
     g_client_count = wifi_ap_get_clients(g_clients, 10);
-    display_update(g_cfg, usb_net_is_online(), g_clients, g_client_count);
-
+    display_update(g_cfg, usb_net_is_online(),
+                   wifi_sta_is_connected(), wifi_sta_rssi(),
+                   g_clients, g_client_count);
 }
 
 void loop() {
@@ -55,11 +66,20 @@ void loop() {
     if (now - g_last_display >= DISPLAY_INTERVAL) {
         g_last_display = now;
         g_client_count = wifi_ap_get_clients(g_clients, 10);
+
+        // Check if any uplink is online (USB or STA)
         bool usb_online = usb_net_is_online();
-        if (usb_online && !g_prev_usb_online) nat_enable();
-        else if (!usb_online && g_prev_usb_online) nat_disable();
-        g_prev_usb_online = usb_online;
-        display_update(g_cfg, usb_online, g_clients, g_client_count);
+        bool sta_online = wifi_sta_is_connected();
+        bool has_uplink = usb_online || sta_online;
+
+        // Enable/disable NAT when uplink state changes
+        if (has_uplink && !g_prev_has_uplink) nat_enable();
+        else if (!has_uplink && g_prev_has_uplink) nat_disable();
+        g_prev_has_uplink = has_uplink;
+
+        display_update(g_cfg, usb_online,
+                       sta_online, wifi_sta_rssi(),
+                       g_clients, g_client_count);
     }
     delay(1);
 }
