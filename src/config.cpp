@@ -1,0 +1,41 @@
+#include "config.h"
+#include <Preferences.h>
+
+static const char* NVS_NS = "ap_config";
+
+void config_load(APConfig &cfg) {
+    Preferences prefs;
+    prefs.begin(NVS_NS, true); // read-only
+
+    cfg.ssid       = prefs.getString("ssid", "PM_Travel");
+    cfg.password   = prefs.getString("password", "Adames007");
+    cfg.ip[0]      = prefs.getUChar("ip0", 192);
+    cfg.ip[1]      = prefs.getUChar("ip1", 168);
+    cfg.ip[2]      = prefs.getUChar("ip2", 1);
+    cfg.ip[3]      = prefs.getUChar("ip3", 1);
+    cfg.dhcp_start = prefs.getUChar("dhcp_s", 2);
+    cfg.dhcp_end   = prefs.getUChar("dhcp_e", 255);
+
+    prefs.end();
+}
+
+void config_save(const APConfig &cfg) {
+    Preferences prefs;
+    prefs.begin(NVS_NS, false); // read-write
+
+    prefs.putString("ssid", cfg.ssid);
+    prefs.putString("password", cfg.password);
+    prefs.putUChar("ip0", cfg.ip[0]);
+    prefs.putUChar("ip1", cfg.ip[1]);
+    prefs.putUChar("ip2", cfg.ip[2]);
+    prefs.putUChar("ip3", cfg.ip[3]);
+    prefs.putUChar("dhcp_s", cfg.dhcp_start);
+    prefs.putUChar("dhcp_e", cfg.dhcp_end);
+
+    prefs.end();
+}
+
+String config_ip_str(const uint8_t ip[4]) {
+    return String(ip[0]) + "." + String(ip[1]) + "." +
+           String(ip[2]) + "." + String(ip[3]);
+}

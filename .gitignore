@@ -1,0 +1,21 @@
+# PlatformIO
+.pio/
+.vscode/
+
+# Build artifacts
+sdkconfig.esp32s3geek*
+sdkconfig.old
+sdkconfig.defaults
+version.txt
+
+# ESP-IDF CMake (re-add when migrating to IDF)
+CMakeLists.txt
+src/CMakeLists.txt
+
+# macOS
+.DS_Store
+
+# Editor
+*.swp
+*.swo
+*~
