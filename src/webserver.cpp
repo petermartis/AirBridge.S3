@@ -14,7 +14,7 @@ static const char HTML_PAGE[] PROGMEM = R"rawhtml(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>WiFi AP Config</title>
+<title>AirBridge.S3</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, sans-serif; background: #1a1a2e; color: #eee;
@@ -42,7 +42,7 @@ static const char HTML_PAGE[] PROGMEM = R"rawhtml(
 </head>
 <body>
 <div class="card">
-  <h1>&#128225; WiFi AP Settings</h1>
+  <h1>&#128225; AirBridge.S3 Settings</h1>
   <form method="POST" action="/save">
     <label>SSID</label>
     <input type="text" name="ssid" value="%SSID%" maxlength="31" required>

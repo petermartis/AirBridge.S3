@@ -1,0 +1,25 @@
+# AirBridge.S3 — sdkconfig defaults
+# Used by PlatformIO ESP-IDF hybrid build (pioarduino)
+
+# --- Arduino-as-component ---
+CONFIG_AUTOSTART_ARDUINO=y
+CONFIG_FREERTOS_HZ=1000
+
+# --- IPv4 routing / NAT (NAPT) ---
+CONFIG_LWIP_IP_FORWARD=y
+CONFIG_LWIP_IPV4_NAPT=y
+
+# --- TinyUSB NCM networking ---
+CONFIG_TINYUSB_NET_MODE_NCM=y
+
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+
+# --- Disable HTTPS server (we only use HTTP) ---
+CONFIG_ESP_HTTPS_SERVER_ENABLE=n
+
+# --- USB OTG mode for TinyUSB (no serial console — use LCD for debug) ---
+CONFIG_ARDUINO_USB_CDC_ON_BOOT=0
+CONFIG_ARDUINO_USB_MODE=0
+
+# --- Flash size ---
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y

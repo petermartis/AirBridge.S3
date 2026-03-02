@@ -5,12 +5,10 @@
 # Build artifacts
 sdkconfig.esp32s3geek*
 sdkconfig.old
-sdkconfig.defaults
 version.txt
 
-# ESP-IDF CMake (re-add when migrating to IDF)
-CMakeLists.txt
-src/CMakeLists.txt
+# Managed components (downloaded at build time)
+managed_components/
 
 # macOS
 .DS_Store

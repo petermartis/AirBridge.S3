@@ -2,7 +2,7 @@
 #include <WiFi.h>
 #include <esp_wifi.h>
 #include <esp_netif.h>
-#include <esp_netif_sta_list.h>
+#include <esp_log.h>
 #include <lwip/ip4_addr.h>
 
 void wifi_ap_init(const APConfig &cfg) {
@@ -24,7 +24,7 @@ void wifi_ap_init(const APConfig &cfg) {
     // We'll implement explicit DHCP lease-range control in a follow-up using
     // the correct DHCP server APIs.
 
-    Serial.printf("[WiFi] AP started: SSID=%s IP=%s DHCP=%d-%d\n",
+    ESP_LOGI("WiFi", "AP started: SSID=%s IP=%s DHCP=%d-%d",
         cfg.ssid.c_str(),
         config_ip_str(cfg.ip).c_str(),
         cfg.dhcp_start, cfg.dhcp_end);
@@ -36,24 +36,28 @@ int wifi_ap_client_count() {
 
 int wifi_ap_get_clients(ClientInfo *out, int max_clients) {
     wifi_sta_list_t wifi_list;
-    esp_netif_sta_list_t netif_list;
-
     if (esp_wifi_ap_get_sta_list(&wifi_list) != ESP_OK) return 0;
-    if (esp_netif_get_sta_list(&wifi_list, &netif_list) != ESP_OK) return 0;
+
+    // Get IP addresses for each connected station via DHCP server
+    esp_netif_t *ap_netif = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
 
     int count = 0;
-    for (int i = 0; i < netif_list.num && count < max_clients; i++) {
-        memcpy(out[count].mac, netif_list.sta[i].mac, 6);
+    for (int i = 0; i < wifi_list.num && count < max_clients; i++) {
+        memcpy(out[count].mac, wifi_list.sta[i].mac, 6);
 
-        // Extract IP address from the sta list
-        uint32_t ip_addr = netif_list.sta[i].ip.addr;
-        out[count].ip[0] = (ip_addr >> 0)  & 0xFF;
-        out[count].ip[1] = (ip_addr >> 8)  & 0xFF;
-        out[count].ip[2] = (ip_addr >> 16) & 0xFF;
-        out[count].ip[3] = (ip_addr >> 24) & 0xFF;
+        // Look up IP via DHCP server
+        esp_netif_pair_mac_ip_t pair = {};
+        memcpy(pair.mac, wifi_list.sta[i].mac, 6);
+        if (ap_netif && esp_netif_dhcps_get_clients_by_mac(ap_netif, 1, &pair) == ESP_OK) {
+            uint32_t ip_addr = pair.ip.addr;
+            out[count].ip[0] = (ip_addr >> 0)  & 0xFF;
+            out[count].ip[1] = (ip_addr >> 8)  & 0xFF;
+            out[count].ip[2] = (ip_addr >> 16) & 0xFF;
+            out[count].ip[3] = (ip_addr >> 24) & 0xFF;
+        } else {
+            memset(out[count].ip, 0, 4);
+        }
 
-        // Hostname: fallback to MAC-based name
-        // (DHCP hostname not easily retrievable in this API)
         char mac_name[18];
         snprintf(mac_name, sizeof(mac_name), "%02X:%02X:%02X:%02X:%02X:%02X",
             out[count].mac[0], out[count].mac[1], out[count].mac[2],

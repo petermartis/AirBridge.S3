@@ -1,7 +1,10 @@
 #include "display.h"
-#include <TFT_eSPI.h>
+#include "LGFX_Config.h"
+#include "usb_net.h"
+#include "nat.h"
 
-static TFT_eSPI tft = TFT_eSPI();
+static LGFX tft;
+static LGFX_Sprite sprite(&tft);
 
 // Portrait: 135 wide x 240 tall
 static const int SCREEN_W = 135;
@@ -23,12 +26,13 @@ static const uint16_t COL_NOCONN   = 0x4208;  // dim
 
 void display_init() {
     tft.init();
-    tft.setRotation(2);  // portrait flipped 180° (up-side down)
+    tft.setRotation(2);  // portrait flipped 180°
     tft.fillScreen(COL_BG);
+    tft.setBrightness(255);  // backlight on (managed by LovyanGFX Light_PWM)
 
-    // Turn on backlight
-    pinMode(TFT_BL, OUTPUT);
-    digitalWrite(TFT_BL, TFT_BACKLIGHT_ON);
+    // Create full-screen sprite for flicker-free updates
+    sprite.setColorDepth(16);
+    sprite.createSprite(SCREEN_W, SCREEN_H);
 }
 
 void display_boot_screen() {
@@ -36,113 +40,131 @@ void display_boot_screen() {
     tft.setTextColor(COL_HEADER_FG, COL_BG);
     tft.setTextDatum(MC_DATUM);
     tft.setTextFont(4);
-    tft.drawString("WiFi AP", SCREEN_W / 2, SCREEN_H / 2 - 20);
+    tft.drawString("AirBridge.S3", SCREEN_W / 2, SCREEN_H / 2 - 20);
     tft.setTextFont(2);
     tft.drawString("Booting...", SCREEN_W / 2, SCREEN_H / 2 + 15);
 }
 
-static void draw_separator(int y) {
-    tft.drawFastHLine(0, y, SCREEN_W, COL_SEP);
+static void draw_separator(LGFX_Sprite &s, int y) {
+    s.drawFastHLine(0, y, SCREEN_W, COL_SEP);
 }
 
 void display_update(const APConfig &cfg, bool usb_online,
                     ClientInfo *clients, int client_count)
 {
-    tft.fillScreen(COL_BG);
+    // Draw to off-screen sprite, then push in one shot (no flicker)
+    sprite.fillScreen(COL_BG);
     int y = 0;
 
     // ---- Header bar ----
-    tft.fillRect(0, y, SCREEN_W, 22, COL_HEADER_BG);
-    tft.setTextColor(COL_HEADER_FG, COL_HEADER_BG);
-    tft.setTextDatum(MC_DATUM);
-    tft.setTextFont(2);
-    tft.drawString("WiFi AP", SCREEN_W / 2, y + 11);
+    sprite.fillRect(0, y, SCREEN_W, 22, COL_HEADER_BG);
+    sprite.setTextColor(COL_HEADER_FG, COL_HEADER_BG);
+    sprite.setTextDatum(MC_DATUM);
+    sprite.setTextFont(2);
+    sprite.drawString("AirBridge.S3", SCREEN_W / 2, y + 11);
     y += 24;
 
     // ---- SSID ----
-    tft.setTextDatum(TL_DATUM);
-    tft.setTextFont(1);  // 6x8 GLCD font
-    tft.setTextColor(COL_LABEL, COL_BG);
-    tft.drawString("SSID:", 2, y);
+    sprite.setTextDatum(TL_DATUM);
+    sprite.setTextFont(1);  // 6x8 GLCD font
+    sprite.setTextColor(COL_LABEL, COL_BG);
+    sprite.drawString("SSID:", 2, y);
     y += 10;
-    tft.setTextColor(COL_VALUE, COL_BG);
-    tft.setTextFont(2);  // 16px font for the value
-    tft.drawString(cfg.ssid, 2, y);
+    sprite.setTextColor(COL_VALUE, COL_BG);
+    sprite.setTextFont(2);  // 16px font for the value
+    sprite.drawString(cfg.ssid, 2, y);
     y += 18;
 
     // ---- Password ----
-    tft.setTextFont(1);
-    tft.setTextColor(COL_LABEL, COL_BG);
-    tft.drawString("Password:", 2, y);
+    sprite.setTextFont(1);
+    sprite.setTextColor(COL_LABEL, COL_BG);
+    sprite.drawString("Password:", 2, y);
     y += 10;
-    tft.setTextColor(COL_PASS, COL_BG);
-    tft.setTextFont(2);
-    tft.drawString(cfg.password, 2, y);
+    sprite.setTextColor(COL_PASS, COL_BG);
+    sprite.setTextFont(2);
+    sprite.drawString(cfg.password, 2, y);
     y += 18;
 
     // ---- IP Address ----
-    tft.setTextFont(1);
-    tft.setTextColor(COL_LABEL, COL_BG);
-    tft.drawString("IP:", 2, y);
+    sprite.setTextFont(1);
+    sprite.setTextColor(COL_LABEL, COL_BG);
+    sprite.drawString("IP:", 2, y);
     y += 10;
-    tft.setTextColor(COL_VALUE, COL_BG);
-    tft.setTextFont(1);
-    tft.drawString(config_ip_str(cfg.ip), 2, y);
+    sprite.setTextColor(COL_VALUE, COL_BG);
+    sprite.setTextFont(1);
+    sprite.drawString(config_ip_str(cfg.ip), 2, y);
     y += 10;
 
-    draw_separator(y + 1);
+    draw_separator(sprite, y + 1);
     y += 4;
 
     // ---- USB Status ----
-    tft.setTextFont(1);
-    tft.setTextColor(COL_LABEL, COL_BG);
-    tft.drawString("USB:", 2, y);
+    sprite.setTextFont(1);
+    sprite.setTextColor(COL_LABEL, COL_BG);
+    sprite.drawString("USB:", 2, y);
     if (usb_online) {
-        tft.setTextColor(COL_USB_ON, COL_BG);
-        tft.drawString("Online (NAT)", 28, y);
+        sprite.setTextColor(COL_USB_ON, COL_BG);
+        sprite.drawString("Online (NAT)", 28, y);
     } else {
-        tft.setTextColor(COL_USB_OFF, COL_BG);
-        tft.drawString("Offline", 28, y);
+        sprite.setTextColor(COL_USB_OFF, COL_BG);
+        sprite.drawString("Offline", 28, y);
     }
     y += 12;
 
-    draw_separator(y + 1);
+    draw_separator(sprite, y + 1);
     y += 4;
 
     // ---- Connected Clients header ----
-    tft.setTextFont(1);
-    tft.setTextColor(COL_LABEL, COL_BG);
+    sprite.setTextFont(1);
+    sprite.setTextColor(COL_LABEL, COL_BG);
     {
         char hdr[32];
         snprintf(hdr, sizeof(hdr), "Clients (%d):", client_count);
-        tft.drawString(hdr, 2, y);
+        sprite.drawString(hdr, 2, y);
     }
     y += 12;
 
+    // ---- Debug: USB/NAT status ----
+    draw_separator(sprite, y + 1);
+    y += 4;
+    sprite.setTextFont(1);
+    sprite.setTextColor(0x7BEF, COL_BG);  // light gray
+    sprite.drawString(usb_net_status_msg(), 2, y);
+    y += 10;
+    if (nat_is_active()) {
+        sprite.setTextColor(COL_USB_ON, COL_BG);
+        sprite.drawString("NAT: active", 2, y);
+    } else {
+        sprite.setTextColor(COL_USB_OFF, COL_BG);
+        sprite.drawString("NAT: off", 2, y);
+    }
+    y += 12;
+    draw_separator(sprite, y + 1);
+    y += 4;
+
     if (client_count == 0) {
-        tft.setTextColor(COL_NOCONN, COL_BG);
-        tft.drawString("No devices", 2, y);
-        return;
+        sprite.setTextColor(COL_NOCONN, COL_BG);
+        sprite.drawString("No devices", 2, y);
+    } else {
+        // ---- Client list ----
+        sprite.setTextFont(1);
+        for (int i = 0; i < client_count && y < (SCREEN_H - 16); i++) {
+            sprite.setTextColor(COL_IP, COL_BG);
+            char ip_str[16];
+            snprintf(ip_str, sizeof(ip_str), "%d.%d.%d.%d",
+                clients[i].ip[0], clients[i].ip[1],
+                clients[i].ip[2], clients[i].ip[3]);
+            sprite.drawString(ip_str, 4, y);
+            y += 10;
+
+            sprite.setTextColor(COL_HOST, COL_BG);
+            String host = clients[i].hostname;
+            if (host.length() > 22) host = host.substring(0, 22);
+            sprite.drawString(host, 8, y);
+            y += 12;
+        }
     }
 
-    // ---- Client list ----
-    // Each client: IP line + hostname line = ~20px
-    tft.setTextFont(1);  // 6x8 GLCD — fits "192.168.1.100" (13 chars * 6 = 78px) in 135px
-    for (int i = 0; i < client_count && y < (SCREEN_H - 16); i++) {
-        // IP address
-        tft.setTextColor(COL_IP, COL_BG);
-        char ip_str[16];
-        snprintf(ip_str, sizeof(ip_str), "%d.%d.%d.%d",
-            clients[i].ip[0], clients[i].ip[1],
-            clients[i].ip[2], clients[i].ip[3]);
-        tft.drawString(ip_str, 4, y);
-        y += 10;
-
-        // Hostname (truncate if too long)
-        tft.setTextColor(COL_HOST, COL_BG);
-        String host = clients[i].hostname;
-        if (host.length() > 22) host = host.substring(0, 22);
-        tft.drawString(host, 8, y);
-        y += 12;
-    }
+    // Push entire frame to display at once
+    sprite.pushSprite(0, 0);
 }
