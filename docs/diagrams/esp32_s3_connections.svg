@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" font-family="'Segoe UI', Arial, sans-serif">
+  <defs>
+    <marker id="a" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto">
+      <path d="M0,0 L7,2.5 L0,5 Z" fill="#555"/>
+    </marker>
+    <filter id="s" x="-2%" y="-2%" width="104%" height="104%">
+      <feDropShadow dx="1" dy="1" stdDeviation="2" flood-opacity="0.12"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="800" fill="#FAFAFA" rx="8"/>
+  <text x="600" y="35" text-anchor="middle" font-size="20" font-weight="bold" fill="#1E293B">AirBridge Pro — ESP32-S3 GPIO Assignments</text>
+  <text x="600" y="55" text-anchor="middle" font-size="12" fill="#64748B">ESP32-S3-WROOM-1-N8R2 · 35 usable GPIOs · Quad SPI Flash + Quad SPI PSRAM (GPIO 26-32 internal)</text>
+
+  <!-- ================================================================ -->
+  <!-- CENTRAL S3 MODULE -->
+  <!-- ================================================================ -->
+  <rect x="420" y="90" width="360" height="620" rx="12" fill="white" stroke="#2563EB" stroke-width="3" filter="url(#s)"/>
+  <rect x="420" y="90" width="360" height="40" rx="12" fill="#2563EB"/>
+  <rect x="420" y="115" width="360" height="15" fill="#2563EB"/>
+  <text x="600" y="117" text-anchor="middle" font-size="15" font-weight="bold" fill="white">ESP32-S3-WROOM-1-N8R2</text>
+
+  <!-- Module info -->
+  <text x="440" y="155" font-size="10" fill="#64748B">CPU: Dual-core Xtensa LX7 @ 240 MHz</text>
+  <text x="440" y="170" font-size="10" fill="#64748B">SRAM: 512 KB · PSRAM: 2 MB (Quad SPI)</text>
+  <text x="440" y="185" font-size="10" fill="#64748B">Flash: 8 MB · USB OTG: Full-speed</text>
+
+  <!-- ================================================================ -->
+  <!-- LEFT SIDE — Pin assignments -->
+  <!-- ================================================================ -->
+
+  <!-- SPI Bus 2: LCD -->
+  <rect x="435" y="205" width="330" height="110" rx="6" fill="#F0FDF4" stroke="#22C55E" stroke-width="1.5"/>
+  <text x="450" y="223" font-size="11" font-weight="bold" fill="#15803D">SPI Bus 2 — LCD Display (ST7789T3)</text>
+
+  <text x="455" y="245" font-size="10" fill="#1E293B" font-family="monospace">GPIO  1  →  LCD_MOSI   (SPI2 MOSI)</text>
+  <text x="455" y="262" font-size="10" fill="#1E293B" font-family="monospace">GPIO  2  →  LCD_SCLK   (SPI2 CLK)</text>
+  <text x="455" y="279" font-size="10" fill="#1E293B" font-family="monospace">GPIO  3  →  LCD_CS     (chip select)</text>
+  <text x="455" y="296" font-size="10" fill="#1E293B" font-family="monospace">GPIO  4  →  LCD_DC     (data/command)</text>
+  <text x="455" y="313" font-size="10" fill="#1E293B" font-family="monospace">GPIO  5  →  LCD_RST    (reset)</text>
+
+  <!-- SPI Bus 1: W5500 + Inter-chip -->
+  <rect x="435" y="325" width="330" height="165" rx="6" fill="#FFF7ED" stroke="#F97316" stroke-width="1.5"/>
+  <text x="450" y="343" font-size="11" font-weight="bold" fill="#C2410C">SPI Bus 1 — W5500 + Inter-chip Link</text>
+  <text x="450" y="358" font-size="9" fill="#EA580C">(Shared MOSI/MISO/SCK, separate CS)</text>
+
+  <text x="455" y="380" font-size="10" fill="#1E293B" font-family="monospace">GPIO  6  →  SPI1_MOSI  (shared)</text>
+  <text x="455" y="397" font-size="10" fill="#1E293B" font-family="monospace">GPIO  7  →  SPI1_MISO  (shared)</text>
+  <text x="455" y="414" font-size="10" fill="#1E293B" font-family="monospace">GPIO  8  →  SPI1_SCLK  (shared)</text>
+  <text x="455" y="431" font-size="10" fill="#1E293B" font-family="monospace">GPIO  9  →  W5500_CS   (chip select)</text>
+  <text x="455" y="448" font-size="10" fill="#1E293B" font-family="monospace">GPIO 10  →  W5500_INT  (interrupt)</text>
+  <text x="455" y="465" font-size="10" fill="#1E293B" font-family="monospace">GPIO 11  →  W5500_RST  (reset)</text>
+  <text x="455" y="482" font-size="10" fill="#1E293B" font-family="monospace">GPIO 12  →  C5_CS      (inter-chip CS)</text>
+
+  <!-- I²C Bus -->
+  <rect x="435" y="500" width="330" height="75" rx="6" fill="#FFFBEB" stroke="#F59E0B" stroke-width="1.5"/>
+  <text x="450" y="518" font-size="11" font-weight="bold" fill="#B45309">I²C Bus — Shared (3 devices)</text>
+
+  <text x="455" y="540" font-size="10" fill="#1E293B" font-family="monospace">GPIO 13  →  I2C_SDA    (data)</text>
+  <text x="455" y="557" font-size="10" fill="#1E293B" font-family="monospace">GPIO 14  →  I2C_SCL    (clock)</text>
+  <text x="455" y="572" font-size="9" fill="#64748B">  AXP2101(0x34) · STUSB4500(0x28) · CST816D(0x15)</text>
+
+  <!-- Misc GPIOs -->
+  <rect x="435" y="585" width="330" height="80" rx="6" fill="#F5F3FF" stroke="#A78BFA" stroke-width="1.5"/>
+  <text x="450" y="603" font-size="11" font-weight="bold" fill="#7C3AED">Misc / Control</text>
+
+  <text x="455" y="625" font-size="10" fill="#1E293B" font-family="monospace">GPIO 15  →  TOUCH_INT  (CST816D irq)</text>
+  <text x="455" y="642" font-size="10" fill="#1E293B" font-family="monospace">GPIO 16  →  LCD_BL     (backlight PWM)</text>
+  <text x="455" y="659" font-size="10" fill="#1E293B" font-family="monospace">GPIO 17  →  C5_HNDSHK  (inter-chip rdy)</text>
+
+  <!-- USB -->
+  <rect x="435" y="675" width="330" height="25" rx="4" fill="#DBEAFE" stroke="#3B82F6" stroke-width="1.5"/>
+  <text x="450" y="693" font-size="10" fill="#1E40AF" font-family="monospace">GPIO 19/20 → USB D- / D+  (OTG, fixed)</text>
+
+  <!-- ================================================================ -->
+  <!-- LEFT PERIPHERALS -->
+  <!-- ================================================================ -->
+
+  <!-- LCD Display -->
+  <rect x="30" y="205" width="170" height="110" rx="8" fill="white" stroke="#22C55E" stroke-width="2" filter="url(#s)"/>
+  <text x="115" y="230" text-anchor="middle" font-size="12" font-weight="bold" fill="#15803D">2.0" IPS LCD</text>
+  <text x="115" y="248" text-anchor="middle" font-size="10" fill="#16A34A">ST7789T3</text>
+  <text x="115" y="265" text-anchor="middle" font-size="9" fill="#16A34A">240×320 · SPI @ 40MHz</text>
+  <text x="115" y="282" text-anchor="middle" font-size="9" fill="#16A34A">Touch: CST816D (I²C)</text>
+  <text x="115" y="299" text-anchor="middle" font-size="9" fill="#16A34A">150 KB framebuffer (PSRAM)</text>
+  <line x1="200" y1="260" x2="435" y2="260" stroke="#22C55E" stroke-width="2" marker-end="url(#a)"/>
+
+  <!-- W5500 -->
+  <rect x="30" y="345" width="170" height="90" rx="8" fill="white" stroke="#F97316" stroke-width="2" filter="url(#s)"/>
+  <text x="115" y="370" text-anchor="middle" font-size="12" font-weight="bold" fill="#C2410C">W5500</text>
+  <text x="115" y="388" text-anchor="middle" font-size="10" fill="#EA580C">Ethernet MAC+PHY</text>
+  <text x="115" y="405" text-anchor="middle" font-size="9" fill="#F97316">SPI @ 36MHz · QFN-48</text>
+  <text x="115" y="420" text-anchor="middle" font-size="9" fill="#F97316">→ HR911105A RJ45</text>
+  <line x1="200" y1="400" x2="435" y2="400" stroke="#F97316" stroke-width="2" marker-end="url(#a)"/>
+
+  <!-- USB-C Data -->
+  <rect x="30" y="655" width="170" height="60" rx="8" fill="white" stroke="#2563EB" stroke-width="2" filter="url(#s)"/>
+  <text x="115" y="680" text-anchor="middle" font-size="12" font-weight="bold" fill="#1E40AF">USB-C #1</text>
+  <text x="115" y="698" text-anchor="middle" font-size="10" fill="#2563EB">NCM Data Port (OTG)</text>
+  <line x1="200" y1="690" x2="435" y2="690" stroke="#2563EB" stroke-width="2" marker-end="url(#a)"/>
+
+  <!-- ================================================================ -->
+  <!-- RIGHT PERIPHERALS -->
+  <!-- ================================================================ -->
+
+  <!-- Inter-chip to C5 -->
+  <rect x="870" y="345" width="200" height="145" rx="8" fill="white" stroke="#9333EA" stroke-width="2" filter="url(#s)"/>
+  <text x="970" y="370" text-anchor="middle" font-size="12" font-weight="bold" fill="#7C3AED">→ ESP32-C5</text>
+  <text x="970" y="388" text-anchor="middle" font-size="10" fill="#9333EA">Inter-chip SPI Link</text>
+
+  <text x="885" y="412" font-size="9" fill="#475569">S3 = SPI Master</text>
+  <text x="885" y="428" font-size="9" fill="#475569">C5 = SPI Slave</text>
+  <text x="885" y="448" font-size="9" fill="#475569">Protocol: Raw Ethernet</text>
+  <text x="885" y="463" font-size="9" fill="#475569">frames with 4-byte header</text>
+  <text x="885" y="478" font-size="9" fill="#475569">(src_iface, len, flags)</text>
+  <line x1="765" y1="420" x2="870" y2="420" stroke="#9333EA" stroke-width="2" marker-end="url(#a)"/>
+
+  <!-- I²C Devices -->
+  <rect x="870" y="510" width="200" height="100" rx="8" fill="white" stroke="#F59E0B" stroke-width="2" filter="url(#s)"/>
+  <text x="970" y="535" text-anchor="middle" font-size="12" font-weight="bold" fill="#B45309">I²C Devices</text>
+  <text x="885" y="558" font-size="9" fill="#475569">0x15 — CST816D (touch)</text>
+  <text x="885" y="575" font-size="9" fill="#475569">0x28 — STUSB4500 (PD ctrl)</text>
+  <text x="885" y="592" font-size="9" fill="#475569">0x34 — AXP2101 (PMIC)</text>
+  <line x1="765" y1="550" x2="870" y2="550" stroke="#F59E0B" stroke-width="2" stroke-dasharray="4,2" marker-end="url(#a)"/>
+
+  <!-- ================================================================ -->
+  <!-- GPIO SUMMARY -->
+  <!-- ================================================================ -->
+  <rect x="870" y="160" width="290" height="150" rx="8" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.5" filter="url(#s)"/>
+  <text x="890" y="185" font-size="12" font-weight="bold" fill="#1D4ED8">GPIO Summary</text>
+
+  <text x="890" y="210" font-size="10" fill="#475569">SPI2 (LCD):        5 pins  (1-5)</text>
+  <text x="890" y="228" font-size="10" fill="#475569">SPI1 (W5500+C5):   7 pins  (6-12)</text>
+  <text x="890" y="246" font-size="10" fill="#475569">I²C (shared):      2 pins  (13-14)</text>
+  <text x="890" y="264" font-size="10" fill="#475569">Touch/BL/C5:       3 pins  (15-17)</text>
+  <text x="890" y="282" font-size="10" fill="#475569">USB OTG:           2 pins  (19-20)</text>
+
+  <line x1="890" y1="290" x2="1140" y2="290" stroke="#93C5FD" stroke-width="1"/>
+  <text x="890" y="306" font-size="10" font-weight="bold" fill="#1D4ED8">Used: 19 pins · Free: ~16 pins</text>
+
+  <!-- Version -->
+  <text x="600" y="785" text-anchor="middle" font-size="10" fill="#94A3B8">AirBridge Pro v1.0 — ESP32-S3 Pin Assignments — March 2026</text>
+</svg>

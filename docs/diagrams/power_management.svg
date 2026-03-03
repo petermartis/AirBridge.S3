@@ -1,0 +1,241 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 750" font-family="'Segoe UI', Arial, sans-serif">
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#555"/>
+    </marker>
+    <marker id="arr-r" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#DC2626"/>
+    </marker>
+    <marker id="arr-b" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#2563EB"/>
+    </marker>
+    <filter id="sh" x="-2%" y="-2%" width="104%" height="104%">
+      <feDropShadow dx="1" dy="1" stdDeviation="2" flood-opacity="0.12"/>
+    </filter>
+    <linearGradient id="bgp" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFBEB"/>
+      <stop offset="100%" stop-color="#FEF3C7"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="750" fill="#FAFAFA" rx="8"/>
+
+  <!-- Title -->
+  <text x="600" y="35" text-anchor="middle" font-size="20" font-weight="bold" fill="#1E293B">AirBridge Pro — Power Management Schematic</text>
+
+  <!-- ================================================================ -->
+  <!-- USB-C POWER CONNECTOR -->
+  <!-- ================================================================ -->
+  <rect x="30" y="120" width="160" height="200" rx="10" fill="url(#bgp)" stroke="#F59E0B" stroke-width="2" filter="url(#sh)"/>
+  <text x="110" y="145" text-anchor="middle" font-size="13" font-weight="bold" fill="#92400E">USB-C #2</text>
+  <text x="110" y="163" text-anchor="middle" font-size="10" fill="#A16207">Power Input</text>
+
+  <!-- USB-C pins -->
+  <rect x="45" y="180" width="130" height="20" rx="3" fill="white" stroke="#D97706" stroke-width="1"/>
+  <text x="55" y="194" font-size="9" font-weight="bold" fill="#92400E">VBUS</text>
+  <text x="155" y="194" text-anchor="end" font-size="9" fill="#64748B">5V (PD negotiated)</text>
+
+  <rect x="45" y="205" width="130" height="20" rx="3" fill="white" stroke="#D97706" stroke-width="1"/>
+  <text x="55" y="219" font-size="9" font-weight="bold" fill="#92400E">CC1</text>
+  <text x="155" y="219" text-anchor="end" font-size="9" fill="#64748B">→ STUSB4500</text>
+
+  <rect x="45" y="230" width="130" height="20" rx="3" fill="white" stroke="#D97706" stroke-width="1"/>
+  <text x="55" y="244" font-size="9" font-weight="bold" fill="#92400E">CC2</text>
+  <text x="155" y="244" text-anchor="end" font-size="9" fill="#64748B">→ STUSB4500</text>
+
+  <rect x="45" y="255" width="130" height="20" rx="3" fill="white" stroke="#D97706" stroke-width="1"/>
+  <text x="55" y="269" font-size="9" font-weight="bold" fill="#92400E">GND</text>
+  <text x="155" y="269" text-anchor="end" font-size="9" fill="#64748B">Common Ground</text>
+
+  <rect x="45" y="280" width="130" height="20" rx="3" fill="#F0F9FF" stroke="#D97706" stroke-width="1"/>
+  <text x="55" y="294" font-size="9" font-weight="bold" fill="#92400E">SHIELD</text>
+  <text x="155" y="294" text-anchor="end" font-size="9" fill="#64748B">Chassis GND</text>
+
+  <!-- ================================================================ -->
+  <!-- STUSB4500 -->
+  <!-- ================================================================ -->
+  <rect x="260" y="100" width="200" height="260" rx="8" fill="white" stroke="#6366F1" stroke-width="2" filter="url(#sh)"/>
+  <rect x="260" y="100" width="200" height="30" rx="8" fill="#6366F1"/>
+  <rect x="260" y="118" width="200" height="12" fill="#6366F1"/>
+  <text x="360" y="122" text-anchor="middle" font-size="12" font-weight="bold" fill="white">STUSB4500</text>
+  <text x="360" y="150" text-anchor="middle" font-size="10" fill="#6366F1">USB-C PD Sink Controller</text>
+  <text x="360" y="165" text-anchor="middle" font-size="9" fill="#6366F1">QFN-24 · I²C addr: 0x28</text>
+
+  <!-- STUSB4500 pins -->
+  <text x="275" y="190" font-size="9" fill="#475569">CC1 ←───── USB-C CC1</text>
+  <text x="275" y="210" font-size="9" fill="#475569">CC2 ←───── USB-C CC2</text>
+  <text x="275" y="230" font-size="9" fill="#475569">VBUS_IN ← USB-C VBUS</text>
+  <text x="275" y="250" font-size="9" fill="#475569">VBUS_OUT → AXP2101 VBUS</text>
+  <text x="275" y="270" font-size="9" fill="#475569">ALERT# ──→ S3 GPIO (opt)</text>
+  <text x="275" y="290" font-size="9" fill="#475569">SDA ──────→ I²C Bus</text>
+  <text x="275" y="310" font-size="9" fill="#475569">SCL ──────→ I²C Bus</text>
+  <text x="275" y="330" font-size="9" fill="#475569">NVM: 5V/3A PDO programmed</text>
+
+  <!-- Connection: USB-C to STUSB4500 -->
+  <line x1="190" y1="190" x2="260" y2="190" stroke="#F59E0B" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="190" y1="215" x2="260" y2="215" stroke="#F59E0B" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="190" y1="240" x2="260" y2="240" stroke="#F59E0B" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="215" y="185" font-size="8" fill="#B45309">VBUS 5V</text>
+  <text x="225" y="212" font-size="8" fill="#B45309">CC1</text>
+  <text x="225" y="237" font-size="8" fill="#B45309">CC2</text>
+
+  <!-- ================================================================ -->
+  <!-- AXP2101 PMIC -->
+  <!-- ================================================================ -->
+  <rect x="540" y="80" width="260" height="320" rx="8" fill="white" stroke="#DC2626" stroke-width="2.5" filter="url(#sh)"/>
+  <rect x="540" y="80" width="260" height="30" rx="8" fill="#DC2626"/>
+  <rect x="540" y="98" width="260" height="12" fill="#DC2626"/>
+  <text x="670" y="102" text-anchor="middle" font-size="13" font-weight="bold" fill="white">AXP2101 PMIC</text>
+  <text x="670" y="128" text-anchor="middle" font-size="10" fill="#DC2626">Charger + 3×Buck + Fuel Gauge</text>
+  <text x="670" y="143" text-anchor="middle" font-size="9" fill="#DC2626">QFN · I²C addr: 0x34</text>
+
+  <!-- AXP2101 sections -->
+  <!-- Charger -->
+  <rect x="555" y="155" width="230" height="55" rx="4" fill="#FEF2F2" stroke="#FCA5A5" stroke-width="1"/>
+  <text x="565" y="172" font-size="10" font-weight="bold" fill="#B91C1C">LiPo Charger</text>
+  <text x="565" y="187" font-size="9" fill="#DC2626">VBUS (5V) → CC/CV → 4.2V</text>
+  <text x="565" y="200" font-size="9" fill="#DC2626">Max charge current: 1A (I²C configurable)</text>
+
+  <!-- DCDC1 -->
+  <rect x="555" y="218" width="230" height="35" rx="4" fill="#FFF7ED" stroke="#FDBA74" stroke-width="1"/>
+  <text x="565" y="235" font-size="10" font-weight="bold" fill="#C2410C">DCDC1 → 3.3V / 2A</text>
+  <text x="565" y="248" font-size="9" fill="#EA580C">Main system rail (S3, C5, W5500, LCD)</text>
+
+  <!-- DCDC2 -->
+  <rect x="555" y="260" width="230" height="25" rx="4" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1"/>
+  <text x="565" y="278" font-size="9" fill="#64748B">DCDC2 — Reserved (future use)</text>
+
+  <!-- DCDC3 -->
+  <rect x="555" y="292" width="230" height="25" rx="4" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1"/>
+  <text x="565" y="310" font-size="9" fill="#64748B">DCDC3 — Reserved (future use)</text>
+
+  <!-- Fuel gauge -->
+  <rect x="555" y="325" width="230" height="45" rx="4" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1"/>
+  <text x="565" y="342" font-size="10" font-weight="bold" fill="#1D4ED8">Fuel Gauge (built-in)</text>
+  <text x="565" y="357" font-size="9" fill="#2563EB">Battery V, charge I, SOC%, temperature</text>
+  <text x="565" y="368" font-size="9" fill="#2563EB">Readable via I²C from S3</text>
+
+  <!-- Connection: STUSB4500 to AXP2101 -->
+  <line x1="460" y1="190" x2="540" y2="190" stroke="#DC2626" stroke-width="3" marker-end="url(#arr-r)"/>
+  <text x="480" y="183" font-size="9" font-weight="bold" fill="#DC2626">VBUS 5V</text>
+  <text x="480" y="203" font-size="8" fill="#DC2626">(PD negotiated)</text>
+
+  <!-- ================================================================ -->
+  <!-- BATTERY -->
+  <!-- ================================================================ -->
+  <rect x="540" y="460" width="180" height="100" rx="8" fill="#FEE2E2" stroke="#EF4444" stroke-width="2.5" filter="url(#sh)"/>
+
+  <!-- Battery symbol -->
+  <rect x="605" y="475" width="50" height="30" rx="2" fill="none" stroke="#B91C1C" stroke-width="2"/>
+  <rect x="655" y="483" width="8" height="14" rx="1" fill="#B91C1C"/>
+  <line x1="618" y1="483" x2="618" y2="497" stroke="#B91C1C" stroke-width="2"/>
+  <line x1="611" y1="490" x2="625" y2="490" stroke="#B91C1C" stroke-width="2"/>
+  <line x1="635" y1="483" x2="635" y2="497" stroke="#B91C1C" stroke-width="2"/>
+
+  <text x="630" y="525" text-anchor="middle" font-size="12" font-weight="bold" fill="#B91C1C">LiPo 3.7V</text>
+  <text x="630" y="542" text-anchor="middle" font-size="9" fill="#DC2626">2000-5000 mAh</text>
+  <text x="630" y="555" text-anchor="middle" font-size="9" fill="#DC2626">JST-PH 2-pin connector</text>
+
+  <!-- AXP2101 to Battery (bidirectional) -->
+  <line x1="630" y1="400" x2="630" y2="430" stroke="#EF4444" stroke-width="2.5"/>
+  <line x1="630" y1="430" x2="630" y2="460" stroke="#EF4444" stroke-width="2.5"/>
+  <!-- Bidirectional arrows -->
+  <polygon points="625,415 630,405 635,415" fill="#EF4444"/>
+  <polygon points="625,445 630,455 635,445" fill="#EF4444"/>
+  <text x="645" y="425" font-size="8" fill="#B91C1C">Charge ↓</text>
+  <text x="645" y="445" font-size="8" fill="#B91C1C">Discharge ↑</text>
+
+  <!-- ================================================================ -->
+  <!-- BATTERY PROTECTION -->
+  <!-- ================================================================ -->
+  <rect x="340" y="480" width="160" height="60" rx="6" fill="white" stroke="#EF4444" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="420" y="500" text-anchor="middle" font-size="10" font-weight="bold" fill="#B91C1C">DW01A + FS8205A</text>
+  <text x="420" y="515" text-anchor="middle" font-size="9" fill="#DC2626">Over-charge >4.3V</text>
+  <text x="420" y="528" text-anchor="middle" font-size="9" fill="#DC2626">Over-discharge &lt;2.5V</text>
+
+  <line x1="500" y1="510" x2="540" y2="510" stroke="#EF4444" stroke-width="1.5" marker-end="url(#arr-r)"/>
+
+  <!-- ================================================================ -->
+  <!-- 3.3V POWER RAIL -->
+  <!-- ================================================================ -->
+  <line x1="800" y1="235" x2="870" y2="235" stroke="#DC2626" stroke-width="4"/>
+  <line x1="870" y1="130" x2="870" y2="620" stroke="#DC2626" stroke-width="4"/>
+
+  <!-- Rail label -->
+  <rect x="850" y="85" width="80" height="25" rx="4" fill="#DC2626"/>
+  <text x="890" y="103" text-anchor="middle" font-size="11" font-weight="bold" fill="white">3.3V Rail</text>
+
+  <!-- Inductor symbol for DCDC1 -->
+  <path d="M800,235 Q810,225 820,235 Q830,245 840,235 Q850,225 860,235 L870,235" fill="none" stroke="#DC2626" stroke-width="2"/>
+  <text x="830" y="222" text-anchor="middle" font-size="8" fill="#B91C1C">2.2µH</text>
+
+  <!-- Load taps -->
+  <!-- S3 -->
+  <circle cx="870" cy="160" r="4" fill="#DC2626"/>
+  <line x1="870" y1="160" x2="960" y2="160" stroke="#DC2626" stroke-width="2.5" marker-end="url(#arr-r)"/>
+  <rect x="960" y="140" width="180" height="45" rx="6" fill="white" stroke="#2563EB" stroke-width="2" filter="url(#sh)"/>
+  <text x="1050" y="160" text-anchor="middle" font-size="11" font-weight="bold" fill="#1E40AF">ESP32-S3</text>
+  <text x="1050" y="175" text-anchor="middle" font-size="9" fill="#3B82F6">~100-200 mA typical</text>
+
+  <!-- C5 -->
+  <circle cx="870" cy="260" r="4" fill="#DC2626"/>
+  <line x1="870" y1="260" x2="960" y2="260" stroke="#DC2626" stroke-width="2.5" marker-end="url(#arr-r)"/>
+  <rect x="960" y="240" width="180" height="45" rx="6" fill="white" stroke="#16A34A" stroke-width="2" filter="url(#sh)"/>
+  <text x="1050" y="260" text-anchor="middle" font-size="11" font-weight="bold" fill="#15803D">ESP32-C5</text>
+  <text x="1050" y="275" text-anchor="middle" font-size="9" fill="#16A34A">~200-350 mA (WiFi AP+STA)</text>
+
+  <!-- W5500 -->
+  <circle cx="870" cy="360" r="4" fill="#DC2626"/>
+  <line x1="870" y1="360" x2="960" y2="360" stroke="#DC2626" stroke-width="2.5" marker-end="url(#arr-r)"/>
+  <rect x="960" y="340" width="180" height="45" rx="6" fill="white" stroke="#F97316" stroke-width="2" filter="url(#sh)"/>
+  <text x="1050" y="360" text-anchor="middle" font-size="11" font-weight="bold" fill="#C2410C">W5500</text>
+  <text x="1050" y="375" text-anchor="middle" font-size="9" fill="#F97316">~130-150 mA (active)</text>
+
+  <!-- LCD -->
+  <circle cx="870" cy="450" r="4" fill="#DC2626"/>
+  <line x1="870" y1="450" x2="960" y2="450" stroke="#DC2626" stroke-width="2.5" marker-end="url(#arr-r)"/>
+  <rect x="960" y="430" width="180" height="45" rx="6" fill="white" stroke="#22C55E" stroke-width="2" filter="url(#sh)"/>
+  <text x="1050" y="450" text-anchor="middle" font-size="11" font-weight="bold" fill="#15803D">LCD + Backlight</text>
+  <text x="1050" y="465" text-anchor="middle" font-size="9" fill="#22C55E">~30-50 mA</text>
+
+  <!-- STUSB4500 -->
+  <circle cx="870" cy="540" r="4" fill="#DC2626"/>
+  <line x1="870" y1="540" x2="960" y2="540" stroke="#DC2626" stroke-width="2.5" marker-end="url(#arr-r)"/>
+  <rect x="960" y="520" width="180" height="45" rx="6" fill="white" stroke="#6366F1" stroke-width="2" filter="url(#sh)"/>
+  <text x="1050" y="540" text-anchor="middle" font-size="11" font-weight="bold" fill="#4338CA">STUSB4500</text>
+  <text x="1050" y="555" text-anchor="middle" font-size="9" fill="#6366F1">~5 mA (standby/active)</text>
+
+  <!-- Total power budget -->
+  <rect x="940" y="590" width="220" height="55" rx="6" fill="#FEF2F2" stroke="#FCA5A5" stroke-width="1.5"/>
+  <text x="1050" y="610" text-anchor="middle" font-size="10" font-weight="bold" fill="#B91C1C">Total System Load</text>
+  <text x="1050" y="627" text-anchor="middle" font-size="10" fill="#DC2626">Typical: ~460 mA</text>
+  <text x="1050" y="640" text-anchor="middle" font-size="10" fill="#DC2626">Peak: ~750 mA</text>
+
+  <!-- ================================================================ -->
+  <!-- I²C BUS CONNECTIONS -->
+  <!-- ================================================================ -->
+  <rect x="30" y="430" width="250" height="130" rx="8" fill="#FFFBEB" stroke="#F59E0B" stroke-width="1.5" stroke-dasharray="5,3" filter="url(#sh)"/>
+  <text x="50" y="452" font-size="11" font-weight="bold" fill="#B45309">I²C Bus (to ESP32-S3)</text>
+  <text x="50" y="472" font-size="10" fill="#92400E">SDA + SCL (shared bus)</text>
+
+  <text x="50" y="498" font-size="9" fill="#475569">• AXP2101 ──── 0x34 (PMIC, fuel gauge)</text>
+  <text x="50" y="516" font-size="9" fill="#475569">• STUSB4500 ── 0x28 (PD status)</text>
+  <text x="50" y="534" font-size="9" fill="#475569">• CST816D ──── 0x15 (touch panel)</text>
+  <text x="50" y="552" font-size="9" fill="#64748B">(No address conflicts)</text>
+
+  <!-- ================================================================ -->
+  <!-- POWER PATH NOTES -->
+  <!-- ================================================================ -->
+  <rect x="30" y="600" width="480" height="120" rx="8" fill="#F0F9FF" stroke="#93C5FD" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="50" y="622" font-size="11" font-weight="bold" fill="#1D4ED8">Power Path Behavior</text>
+  <text x="50" y="645" font-size="9" fill="#475569">1. USB plugged in → STUSB4500 negotiates 5V/3A → AXP2101 powers</text>
+  <text x="55" y="660" font-size="9" fill="#475569">   system + charges battery simultaneously</text>
+  <text x="50" y="680" font-size="9" fill="#475569">2. USB removed → AXP2101 seamlessly switches to battery power</text>
+  <text x="50" y="700" font-size="9" fill="#475569">3. Battery low (&lt;3.4V) → AXP2101 DCDC1 cannot regulate → shutdown</text>
+  <text x="50" y="715" font-size="9" fill="#475569">4. S3 reads SOC% via I²C → displays on LCD + web UI</text>
+
+  <!-- Version -->
+  <text x="600" y="740" text-anchor="middle" font-size="10" fill="#94A3B8">AirBridge Pro v1.0 — Power Management — March 2026</text>
+</svg>
