@@ -1,0 +1,4 @@
+(fp_lib_table
+  (version 7)
+  (lib (name " ST7789_320x240 ")(type "KiCad")(uri "${KIPRJMOD}/ST7789-320x240.pretty")(options "")(descr ""))
+)

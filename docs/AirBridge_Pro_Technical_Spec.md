@@ -34,6 +34,10 @@ Connected via a high-speed SPI link carrying raw Ethernet frames.
 
 > **Diagram:** [docs/diagrams/system_architecture.svg](diagrams/system_architecture.svg)
 
+![system_architecture_transparent](diagrams/system_architecture_transparent.svg)
+
+
+
 ### Data Flow
 
 ```
@@ -64,6 +68,8 @@ The S3 (master) and C5 (slave) communicate over SPI at 40-80 MHz. Each frame car
 Followed by the raw Ethernet frame (up to 1514 bytes). The HANDSHAKE pin signals when the C5 has frames ready for the S3 to clock out.
 
 ---
+
+
 
 ## 3. Component Selection
 
@@ -135,6 +141,8 @@ Followed by the raw Ethernet frame (up to 1514 bytes). The HANDSHAKE pin signals
 
 > **Diagram:** [docs/diagrams/power_management.svg](diagrams/power_management.svg)
 
+![power_management](diagrams/power_management.svg)
+
 ### Power Path
 
 ```
@@ -174,6 +182,12 @@ Battery (3.7V)   → AXP2101 DCDC1   → 3.3V system rail (all components)
 > **Diagrams:**
 > - [docs/diagrams/esp32_s3_connections.svg](diagrams/esp32_s3_connections.svg)
 > - [docs/diagrams/esp32_c5_connections.svg](diagrams/esp32_c5_connections.svg)
+
+![esp32_s3_connections](diagrams/esp32_s3_connections.svg)
+
+![esp32_c5_connections](diagrams/esp32_c5_connections.svg)
+
+
 
 ### 5.1 ESP32-S3 GPIO Map
 

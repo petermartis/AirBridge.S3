@@ -12,7 +12,8 @@ clients), and a built-in web UI lets you reconfigure everything on the fly.
 - **WiFi Access Point** — WPA2 hotspot with configurable SSID and password
 - **USB Internet Tethering** — Appears as a USB Ethernet adapter (NCM) to the host; gets internet via DHCP
 - **NAT/NAPT** — Automatically routes traffic between the USB uplink and WiFi clients
-- **Status Display** — 1.14" ST7789 LCD showing SSID, password, IP, USB link state, NAT status, and connected devices
+- **Status Display** — 1.14" ST7789 LCD showing SSID, password, IP, USB link state, NAT status, CPU/memory usage, and connected devices
+- **Crash Diagnostics** — LCD shows reset reason (PANIC, WDT, brownout, etc.) on non-normal boots
 - **Web Configuration** — Browser UI to change SSID, password, IP address, and DHCP range
 - **Persistent Config** — Settings stored in NVS flash, survive reboots
 
@@ -63,6 +64,7 @@ LCD BL     GPIO7
 │             Network Layer                      │
 │  wifi_ap.cpp    WiFi SoftAP + DHCP server      │
 │  usb_net.cpp    TinyUSB NCM + custom esp_netif │
+│  sysmon.h       CPU% + memory% monitoring       │
 │  nat.cpp        lwIP NAPT (IP forwarding)      │
 ├────────────────────────────────────────────────┤
 │           Framework (hybrid build)             │
@@ -78,7 +80,8 @@ LCD BL     GPIO7
 
 ### Key Components
 
-- **`usb_net.cpp`** — Initializes TinyUSB in USB-OTG mode with NCM (Network Control Model) class. Creates a custom `esp_netif` driver that bridges TinyUSB NCM packets into lwIP. Runs DHCP client to obtain an IP from the host. Tracks USB link state via `tud_ready()`.
+- **`usb_net.cpp`** — Initializes TinyUSB in USB-OTG mode with NCM (Network Control Model) class. Creates a custom `esp_netif` driver that bridges TinyUSB NCM packets into lwIP. Runs DHCP client to obtain an IP from the host. Tracks USB link state via `tud_ready()`. Shows NCM notification debug state on the LCD when offline.
+- **`sysmon.h`** — Inline helpers for CPU utilization (via FreeRTOS idle-task runtime, dual-core aware) and heap memory usage percentage.
 - **`nat.cpp`** — Enables ESP-IDF's built-in lwIP NAPT on the WiFi AP interface. Activated automatically when the USB link gets an IP; disabled when the link drops.
 - **`wifi_ap.cpp`** — Configures the ESP32 SoftAP with static IP, WPA2, and the Arduino DHCP server. Enumerates connected stations and resolves their IPs via the DHCP lease table.
 - **`display.cpp`** — Drives the ST7789 LCD via LovyanGFX with a full-screen sprite buffer for flicker-free updates. Shows SSID, password, AP IP, USB status, NAT state, and a scrolling client list.
@@ -91,6 +94,17 @@ LCD BL     GPIO7
 The project uses `framework = arduino, espidf` (pioarduino) because:
 - **Arduino** provides convenient APIs for WiFi, Preferences (NVS), and rapid prototyping
 - **ESP-IDF** is required for TinyUSB NCM networking, `esp_netif` custom drivers, `ip_napt_enable()`, and lwIP IP forwarding — none of which are exposed through the Arduino layer
+
+### macOS NCM Patches
+
+The stock TinyUSB NCM driver doesn't fully work with macOS. A build-time patch script (`patch_ncm_cmake.py`) automatically applies fixes during CMake configuration:
+
+1. **100 Mbps speed** — Reports 100 Mbps instead of 12 Mbps so macOS maps to a 100BaseTX medium
+2. **Packet filter ACK** — Acknowledges `SET_ETHERNET_PACKET_FILTER` and `SET_ETHERNET_MULTICAST_FILTERS` requests that macOS sends during Internet Sharing setup
+3. **Notification ordering** — Sends CONNECTED + SPEED notifications from `netd_open()` (during enumeration) and reorders SET_INTERFACE to ACK before sending notifications
+4. **Debug telemetry** — Exposes `ncm_notif_debug` variable for LCD display diagnostics
+
+These patches are applied to the managed component at build time and don't modify tracked source files.
 
 ## Build & Flash
 
@@ -187,12 +201,18 @@ src/
 ├── webserver.cpp/h   HTTP config interface (embedded HTML/CSS)
 ├── usb_net.cpp/h     USB NCM tethering (TinyUSB + custom esp_netif)
 ├── nat.cpp/h         NAT/NAPT (lwIP ip_napt_enable)
+├── sysmon.h          CPU utilization + memory usage monitoring
 ├── LGFX_Config.h     LovyanGFX hardware config for ESP32-S3-GEEK
 └── idf_component.yml ESP-IDF managed component deps (esp_tinyusb)
 
+patch_ncm_cmake.py    Build-time NCM driver patches for macOS
+patch_tinyusb.py      PlatformIO pre-build hook (delegates to CMake patch)
 platformio.ini        PlatformIO build configuration
 sdkconfig.defaults    ESP-IDF Kconfig overrides
 partitions_16MB.csv   Custom partition table (16 MB flash)
+
+docs/                 Technical spec, diagrams (SVG)
+hardware/             KiCad schematic + PCB for AirBridge Pro (next-gen)
 ```
 
 ## License

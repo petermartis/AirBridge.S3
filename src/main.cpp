@@ -13,6 +13,7 @@
 
 #include <Arduino.h>
 #include <esp_system.h>
+#include <esp_rom_sys.h>
 
 #include "config.h"
 #include "wifi_ap.h"
@@ -33,8 +34,18 @@ static const unsigned long DISPLAY_INTERVAL = 2000;
 static unsigned long g_last_display = 0;
 
 void setup() {
+    // 0. Check reset reason (helps diagnose USB crash)
+    esp_reset_reason_t rst = esp_reset_reason();
+    // Will display after screen init
+
     // 1. Display init (LovyanGFX handles backlight on GPIO 7)
     display_init();
+    if (rst != ESP_RST_POWERON && rst != ESP_RST_DEEPSLEEP) {
+        // Show reset reason briefly — helps diagnose crashes
+        // 3=SW_RESET, 4=PANIC, 5=INT_WDT, 6=TASK_WDT, 9=BROWNOUT
+        display_boot_msg(rst);
+        delay(2000);
+    }
     display_boot_screen();
 
     // 2. Config + WiFi AP (uses AP+STA mode if repeater is on)

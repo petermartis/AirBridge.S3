@@ -50,6 +50,19 @@ void display_boot_screen() {
     tft.drawString("Booting...", W / 2, H / 2 + 20);
 }
 
+void display_boot_msg(int reason) {
+    // 3=SW_RESET 4=PANIC 5=INT_WDT 6=TASK_WDT 9=BROWNOUT
+    const char *names[] = {"?","VBAT","EXT","SW","PANIC","IWDT","TWDT","WDT","DSLP","BROWN","SDIO","USB"};
+    const char *name = (reason >= 0 && reason <= 11) ? names[reason] : "?";
+    tft.fillScreen(COL_BG);
+    tft.setTextColor(TFT_RED, COL_BG);
+    tft.setTextDatum(MC_DATUM);
+    tft.setTextFont(4);
+    char buf[32];
+    snprintf(buf, sizeof(buf), "RST:%d %s", reason, name);
+    tft.drawString(buf, W / 2, H / 2);
+}
+
 void display_update(const APConfig &cfg, bool usb_online,
                     bool sta_connected, int sta_rssi,
                     ClientInfo *clients, int client_count)
@@ -66,7 +79,7 @@ void display_update(const APConfig &cfg, bool usb_online,
 
         String title = "AirBridge.S3";
         if (cfg.show_cpu) title += "  CPU:" + String(sysmon_cpu_percent()) + "%";
-        if (cfg.show_mem) title += "  MEM:" + String(sysmon_free_heap_kb()) + "kB";
+        if (cfg.show_mem) title += "  MEM:" + String(sysmon_mem_percent()) + "%";
         sprite.drawString(title, W / 2, 7);
         y = 16;
     } else {
@@ -79,7 +92,7 @@ void display_update(const APConfig &cfg, bool usb_online,
             String stats = "";
             if (cfg.show_cpu) stats += "CPU:" + String(sysmon_cpu_percent()) + "%";
             if (cfg.show_cpu && cfg.show_mem) stats += "  ";
-            if (cfg.show_mem) stats += "MEM:" + String(sysmon_free_heap_kb()) + "kB";
+            if (cfg.show_mem) stats += "MEM:" + String(sysmon_mem_percent()) + "%";
             sprite.drawString(stats, W / 2, 5);
             y = 12;
         } else {
@@ -111,11 +124,18 @@ void display_update(const APConfig &cfg, bool usb_online,
     // ---- USB / STA / NAT  (3 columns, font 2) ----
     sprite.setTextFont(2);
 
-    // USB
+    // USB (show debug status when offline)
     sprite.setTextColor(COL_LABEL, COL_BG);
     sprite.drawString("USB:", C1, y);
-    sprite.setTextColor(usb_online ? COL_ON : COL_OFF, COL_BG);
-    sprite.drawString(usb_online ? "On" : "Off", C1 + 36, y);
+    if (usb_online) {
+        sprite.setTextColor(COL_ON, COL_BG);
+        sprite.drawString("On", C1 + 36, y);
+    } else {
+        sprite.setTextColor(COL_OFF, COL_BG);
+        sprite.setTextFont(1);
+        sprite.drawString(usb_net_status_msg(), C1 + 30, y + 2);
+        sprite.setTextFont(2);
+    }
 
     // STA
     sprite.setTextColor(COL_LABEL, COL_BG);

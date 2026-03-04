@@ -7,6 +7,7 @@
 
 #include <Arduino.h>
 #include <esp_system.h>
+#include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <string.h>
@@ -38,15 +39,19 @@ inline int sysmon_cpu_percent() {
 
     if (delta_run == 0) return 0;
 
-    // delta_run already accounts for both cores' time
-    int idle_pct = (int)((delta_idle * 100) / delta_run);
+    // On dual-core ESP32-S3, total_runtime is wall-clock time but idle
+    // counters accumulate on BOTH cores, so scale by core count.
+    int idle_pct = (int)((delta_idle * 100) / (delta_run * portNUM_PROCESSORS));
     int cpu_pct = 100 - idle_pct;
     if (cpu_pct < 0) cpu_pct = 0;
     if (cpu_pct > 100) cpu_pct = 100;
     return cpu_pct;
 }
 
-// Returns free heap memory in kilobytes
-inline int sysmon_free_heap_kb() {
-    return (int)(esp_get_free_heap_size() / 1024);
+// Returns memory usage as a percentage (0-100) of total heap
+inline int sysmon_mem_percent() {
+    size_t total = heap_caps_get_total_size(MALLOC_CAP_DEFAULT);
+    size_t free_mem = esp_get_free_heap_size();
+    if (total == 0) return 0;
+    return (int)(((total - free_mem) * 100) / total);
 }

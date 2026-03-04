@@ -10,6 +10,21 @@ version.txt
 # Managed components (downloaded at build time)
 managed_components/
 
+# KiCad generated / caches
+hardware/__pycache__/
+hardware/fp-info-cache
+hardware/*.rpt
+hardware/AirBridge_Pro-backups/
+hardware/grb/
+hardware/*.kicad_prl
+
+# Backup archives
+docs/AirBridge_Pro-backups/
+
+# Large binary files (keep SVGs, skip bitmaps)
+*.png
+docs/AirBridge_Pro_Technical_Spec.pdf
+
 # macOS
 .DS_Store
 

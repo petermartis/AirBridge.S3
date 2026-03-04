@@ -14,9 +14,14 @@
 #include <esp_event.h>
 #include <esp_netif.h>
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/timers.h"
 #include "tinyusb.h"
 #include "tinyusb_default_config.h"
 #include "tinyusb_net.h"
+
+// Debug variable from ncm_device.c — tracks notification state machine
+extern "C" volatile uint16_t ncm_notif_debug;
 
 static const char *TAG = "USB_NET";
 
@@ -26,6 +31,7 @@ static const char *TAG = "USB_NET";
 static esp_netif_t *s_usb_netif = NULL;
 static bool s_usb_link_up = false;
 static bool s_usb_has_ip  = false;
+static TimerHandle_t s_notif_timer = NULL;
 static esp_netif_ip_info_t s_usb_ip_info = {};
 static char s_status_msg[48] = "Init...";
 
@@ -153,6 +159,18 @@ static esp_netif_t *create_usb_netif(void)
 }
 
 // ---------------------------------------------------------------------------
+// TinyUSB event callback — runs in the TinyUSB task context
+// ---------------------------------------------------------------------------
+static void tinyusb_event_cb(tinyusb_event_t *event, void *arg)
+{
+    if (event->id == TINYUSB_EVENT_ATTACHED) {
+        // Notifications are handled by the SET_INTERFACE handler in ncm_device.c
+        // (patch 3 resets the state machine so SPEED+CONNECTED fire fresh).
+        ESP_LOGI(TAG, "USB mounted");
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 void usb_net_init()
@@ -160,16 +178,8 @@ void usb_net_init()
     ESP_LOGI(TAG, "Initializing USB NCM...");
     snprintf(s_status_msg, sizeof(s_status_msg), "USB init...");
 
-    // 1. Install TinyUSB driver with custom device name
-    static const char *usb_strings[] = {
-        "\x09\x04",       // 0: Language (English)
-        "AirBridge.S3",    // 1: Manufacturer
-        "AirBridge.S3",    // 2: Product (shown in macOS Network)
-        "000001",          // 3: Serial number
-    };
-    tinyusb_config_t tusb_cfg = TINYUSB_DEFAULT_CONFIG();
-    tusb_cfg.descriptor.string = usb_strings;
-    tusb_cfg.descriptor.string_count = sizeof(usb_strings) / sizeof(usb_strings[0]);
+    // 1. Install TinyUSB driver
+    tinyusb_config_t tusb_cfg = TINYUSB_DEFAULT_CONFIG(tinyusb_event_cb);
     esp_err_t ret = tinyusb_driver_install(&tusb_cfg);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "TinyUSB install failed: %s", esp_err_to_name(ret));
@@ -177,7 +187,7 @@ void usb_net_init()
         return;
     }
 
-    // 2. Initialize NCM network class
+    // 2. Initialize NCM network class (sets MAC string at index 5)
     tinyusb_net_config_t net_cfg = {};
     net_cfg.on_recv_callback = usb_recv_callback;
     net_cfg.free_tx_buffer = usb_free_tx_cb;
@@ -230,12 +240,14 @@ void usb_net_loop()
     bool link_now = tud_ready();
 
     if (link_now && !s_usb_link_up) {
-        // Link just came up — notify esp_netif
         s_usb_link_up = true;
         esp_netif_action_start(s_usb_netif, NULL, 0, NULL);
         esp_netif_action_connected(s_usb_netif, NULL, 0, NULL);
-        snprintf(s_status_msg, sizeof(s_status_msg), "Connected, DHCP...");
-        ESP_LOGI(TAG, "USB link UP");
+        snprintf(s_status_msg, sizeof(s_status_msg), "%04X DHCP", ncm_notif_debug);
+        ESP_LOGI(TAG, "USB link UP, notif_dbg=0x%04X", ncm_notif_debug);
+    } else if (link_now && !s_usb_has_ip) {
+        // Keep updating debug display while waiting for DHCP
+        snprintf(s_status_msg, sizeof(s_status_msg), "%04X DHCP", ncm_notif_debug);
     } else if (!link_now && s_usb_link_up) {
         // Link went down
         s_usb_link_up = false;
@@ -244,5 +256,13 @@ void usb_net_loop()
         esp_netif_action_stop(s_usb_netif, NULL, 0, NULL);
         snprintf(s_status_msg, sizeof(s_status_msg), "Disconnected");
         ESP_LOGW(TAG, "USB link DOWN");
+    }
+
+    // Update debug status for LCD
+    if (!s_usb_link_up && !s_usb_has_ip) {
+        bool tud = tud_ready();
+        bool mounted = tud_mounted();
+        snprintf(s_status_msg, sizeof(s_status_msg), "m:%d t:%d",
+                 mounted, tud);
     }
 }
