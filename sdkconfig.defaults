@@ -9,8 +9,12 @@ CONFIG_FREERTOS_HZ=1000
 CONFIG_LWIP_IP_FORWARD=y
 CONFIG_LWIP_IPV4_NAPT=y
 
-# --- TinyUSB NCM networking ---
-CONFIG_TINYUSB_NET_MODE_NCM=y
+# --- TinyUSB ECM networking (ECM preferred over NCM for macOS compatibility) ---
+CONFIG_TINYUSB_NET_MODE_ECM_RNDIS=y
+
+# --- Use custom PID to avoid macOS driver cache from NCM device ---
+CONFIG_TINYUSB_DESC_USE_DEFAULT_PID=n
+CONFIG_TINYUSB_DESC_CUSTOM_PID=0x4002
 
 # --- DMA mode: needed for interrupt EP notification delivery ---
 CONFIG_TINYUSB_MODE_DMA=y
