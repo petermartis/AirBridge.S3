@@ -7,6 +7,17 @@
 static WiFiServer http_server(80);
 static APConfig *current_cfg = nullptr;
 
+// A config form is a few hundred bytes; anything larger is a bad or hostile
+// request and must not be turned into a heap reservation on a 320KB part.
+static const int MAX_BODY_LEN = 2048;
+
+// Per-request budget for reading the request line, headers and body
+static const unsigned long REQUEST_TIMEOUT_MS = 3000;
+
+// Per-read gap tolerance. Kept well under REQUEST_TIMEOUT_MS so the overall
+// deadline governs how long loop() can be held up, not a single stalled read.
+static const unsigned long READ_GAP_TIMEOUT_MS = 500;
+
 // ---- Embedded HTML page ----
 static const char HTML_PAGE[] PROGMEM = R"rawhtml(
 <!DOCTYPE html>
@@ -146,24 +157,38 @@ repToggle.addEventListener('change', function() {
 function doScan() {
   var sel = document.getElementById('repSsid');
   sel.innerHTML = '<option value="">Scanning...</option>';
-  fetch('/scan').then(r => r.json()).then(nets => {
-    sel.innerHTML = '';
-    if (nets.length === 0) {
-      sel.innerHTML = '<option value="">No networks found</option>';
-      return;
-    }
-    var cur = '%REP_SSID%';
-    nets.sort((a,b) => b.rssi - a.rssi);
-    nets.forEach(n => {
-      var o = document.createElement('option');
-      o.value = n.ssid;
-      o.textContent = n.ssid + ' (' + n.rssi + 'dBm' + (n.enc ? ', secured' : '') + ')';
-      if (n.ssid === cur) o.selected = true;
-      sel.appendChild(o);
+  // The scan runs asynchronously on the device, so poll until it reports done
+  var tries = 0;
+  function poll() {
+    fetch('/scan').then(r => r.json()).then(res => {
+      if (res.scanning) {
+        if (++tries > 20) {
+          sel.innerHTML = '<option value="">Scan timed out</option>';
+          return;
+        }
+        setTimeout(poll, 500);
+        return;
+      }
+      var nets = res.networks || [];
+      if (nets.length === 0) {
+        sel.innerHTML = '<option value="">No networks found</option>';
+        return;
+      }
+      sel.innerHTML = '';
+      var cur = '%REP_SSID%';
+      nets.sort((a,b) => b.rssi - a.rssi);
+      nets.forEach(n => {
+        var o = document.createElement('option');
+        o.value = n.ssid;
+        o.textContent = n.ssid + ' (' + n.rssi + 'dBm' + (n.enc ? ', secured' : '') + ')';
+        if (n.ssid === cur) o.selected = true;
+        sel.appendChild(o);
+      });
+    }).catch(() => {
+      sel.innerHTML = '<option value="">Scan failed</option>';
     });
-  }).catch(() => {
-    sel.innerHTML = '<option value="">Scan failed</option>';
-  });
+  }
+  poll();
 }
 </script>
 </body>
@@ -188,12 +213,18 @@ static String url_decode(const String &in) {
     return out;
 }
 
-// Parse a form field value from URL-encoded POST body
+// Parse a form field value from URL-encoded POST body.
+// Matches on a field boundary so "ssid" cannot match "rep_ssid".
 static String get_form_field(const String &body, const String &name) {
     String search = name + "=";
-    int start = body.indexOf(search);
+    int start = -1;
+    for (int i = body.indexOf(search); i >= 0; i = body.indexOf(search, i + 1)) {
+        if (i == 0 || body[i - 1] == '&') {
+            start = i + search.length();
+            break;
+        }
+    }
     if (start < 0) return "";
-    start += search.length();
     int end = body.indexOf('&', start);
     if (end < 0) end = body.length();
     return url_decode(body.substring(start, end));
@@ -337,10 +368,12 @@ static void handle_save(WiFiClient &client, const String &body) {
     String resp = "<html><body style='background:#1a1a2e;color:#0f0;text-align:center;"
                   "font-family:sans-serif;padding:60px'>"
                   "<h2>&#9989; Settings Saved!</h2>"
-                  "<p>Rebooting in 2 seconds...</p></body></html>";
+                  "<p>Rebooting now...</p></body></html>";
     send_response(client, 200, "text/html", resp);
     client.stop();
-    delay(2000);
+    // Give lwIP time to transmit the response and FIN before the reboot cuts
+    // the socket. Blocking here is harmless: the device is about to restart.
+    delay(500);
     ESP.restart();
 }
 
@@ -354,9 +387,11 @@ void webserver_handle() {
     WiFiClient client = http_server.accept();
     if (!client) return;
 
-    // Wait for data
-    unsigned long timeout = millis() + 3000;
-    while (!client.available() && millis() < timeout) {
+    // Bound every blocking read below; loop() also drives the display and NAT
+    client.setTimeout(READ_GAP_TIMEOUT_MS);
+    unsigned long deadline = millis() + REQUEST_TIMEOUT_MS;
+
+    while (!client.available() && (long)(millis() - deadline) < 0) {
         delay(1);
     }
     if (!client.available()) { client.stop(); return; }
@@ -374,28 +409,44 @@ void webserver_handle() {
         path = request_line.substring(sp1 + 1, sp2);
     }
 
-    // Read headers, find Content-Length
+    // Read headers, find Content-Length. Headers can arrive in several TCP
+    // segments, so read until the blank line rather than until available() == 0.
     int content_length = 0;
-    while (client.available()) {
+    while ((long)(millis() - deadline) < 0) {
         String header = client.readStringUntil('\n');
         header.trim();
         if (header.length() == 0) break;  // end of headers
         if (header.startsWith("Content-Length:")) {
             content_length = header.substring(15).toInt();
         }
+        if (!client.connected() && !client.available()) break;
     }
 
     // Read body for POST
     String body;
     if (is_post && content_length > 0) {
+        if (content_length > MAX_BODY_LEN) {
+            send_response(client, 400, "text/plain", "Request body too large");
+            client.stop();
+            return;
+        }
+        char buf[256];
         body.reserve(content_length);
-        unsigned long body_timeout = millis() + 3000;
-        while ((int)body.length() < content_length && millis() < body_timeout) {
-            if (client.available()) {
-                body += (char)client.read();
-            } else {
-                delay(1);
+        while ((int)body.length() < content_length &&
+               (long)(millis() - deadline) < 0) {
+            int want = content_length - (int)body.length();
+            if (want > (int)sizeof(buf)) want = sizeof(buf);
+            int got = client.readBytes(buf, want);
+            if (got > 0) {
+                body.concat(buf, got);
+            } else if (!client.connected()) {
+                break;
             }
+        }
+        if ((int)body.length() < content_length) {
+            send_response(client, 400, "text/plain", "Incomplete request body");
+            client.stop();
+            return;
         }
     }
 
@@ -403,8 +454,10 @@ void webserver_handle() {
     if (is_post && path == "/save") {
         handle_save(client, body);
     } else if (path == "/scan") {
-        String json = wifi_scan_networks();
-        send_response(client, 200, "application/json", json);
+        // Kick off an async scan and report progress; a blocking scan would
+        // freeze loop() for seconds and disrupt the AP in AP+STA mode.
+        wifi_scan_start();
+        send_response(client, 200, "application/json", wifi_scan_result());
     } else if (path == "/status") {
         String json = "{\"sta_connected\":";
         json += wifi_sta_is_connected() ? "true" : "false";

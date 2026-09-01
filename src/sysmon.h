@@ -10,6 +10,7 @@
 #include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <stdlib.h>
 #include <string.h>
 
 // Returns CPU usage as a percentage (0-100).
@@ -19,10 +20,18 @@ inline int sysmon_cpu_percent() {
     static uint32_t prev_idle_total = 0;
     static uint32_t prev_run_total = 0;
 
-    // Get state of all tasks
-    TaskStatus_t tasks[32];
+    // uxTaskGetSystemState() fills nothing and zeroes total_runtime when the
+    // array is too small, which would poison the deltas below.
+    UBaseType_t capacity = uxTaskGetNumberOfTasks() + 4;
+    TaskStatus_t *tasks = (TaskStatus_t *)malloc(capacity * sizeof(TaskStatus_t));
+    if (!tasks) return 0;
+
     uint32_t total_runtime = 0;
-    UBaseType_t count = uxTaskGetSystemState(tasks, 32, &total_runtime);
+    UBaseType_t count = uxTaskGetSystemState(tasks, capacity, &total_runtime);
+    if (count == 0) {
+        free(tasks);
+        return 0;
+    }
 
     // Sum idle task runtime (both cores: "IDLE0" and "IDLE1", or just "IDLE")
     uint32_t idle_total = 0;
@@ -31,6 +40,7 @@ inline int sysmon_cpu_percent() {
             idle_total += tasks[i].ulRunTimeCounter;
         }
     }
+    free(tasks);
 
     uint32_t delta_run  = total_runtime - prev_run_total;
     uint32_t delta_idle = idle_total - prev_idle_total;

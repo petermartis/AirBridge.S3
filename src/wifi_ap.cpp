@@ -4,8 +4,13 @@
 #include <esp_netif.h>
 #include <esp_log.h>
 #include <lwip/ip4_addr.h>
+#include <dhcpserver/dhcpserver.h>
 
 static const char *TAG = "WiFi";
+
+static esp_netif_t *ap_netif_handle() {
+    return esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
+}
 
 void wifi_ap_init(const APConfig &cfg) {
     // Configure static IP for the AP
@@ -18,10 +23,113 @@ void wifi_ap_init(const APConfig &cfg) {
     WiFi.softAPConfig(local_ip, gateway, subnet);
     WiFi.softAP(cfg.ssid.c_str(), cfg.password.c_str(), 1, 0, 10);
 
+    wifi_ap_apply_dhcp_range(cfg);
+
     ESP_LOGI(TAG, "AP started: SSID=%s IP=%s mode=%s",
         cfg.ssid.c_str(),
         config_ip_str(cfg.ip).c_str(),
         cfg.repeater_on ? "AP+STA" : "AP");
+}
+
+// The DHCP server only accepts option changes while stopped, and rejects a
+// range that contains the AP's own address or exceeds DHCPS_MAX_LEASE (100).
+void wifi_ap_apply_dhcp_range(const APConfig &cfg) {
+    esp_netif_t *ap_netif = ap_netif_handle();
+    if (!ap_netif) {
+        ESP_LOGE(TAG, "AP netif not found, DHCP range not applied");
+        return;
+    }
+
+    uint8_t start = cfg.dhcp_start;
+    uint8_t end   = cfg.dhcp_end;
+    if (end > 254) end = 254;
+    if (start < 1) start = 1;
+    if (start >= end) {
+        ESP_LOGW(TAG, "DHCP range %u-%u invalid, leaving default", start, end);
+        return;
+    }
+    // Never hand out the AP's own address.
+    if (cfg.ip[3] >= start && cfg.ip[3] <= end) {
+        if (cfg.ip[3] < 254 && (uint8_t)(cfg.ip[3] + 1) < end) {
+            start = cfg.ip[3] + 1;
+        } else if (cfg.ip[3] > 1) {
+            end = cfg.ip[3] - 1;
+        } else {
+            ESP_LOGW(TAG, "DHCP range %u-%u contains AP IP, leaving default", start, end);
+            return;
+        }
+    }
+    if (end - start + 1 > DHCPS_MAX_LEASE) {
+        end = start + DHCPS_MAX_LEASE - 1;
+    }
+
+    esp_err_t err = esp_netif_dhcps_stop(ap_netif);
+    if (err != ESP_OK && err != ESP_ERR_ESP_NETIF_DHCP_ALREADY_STOPPED) {
+        ESP_LOGE(TAG, "DHCP stop failed: %s", esp_err_to_name(err));
+        return;
+    }
+
+    dhcps_lease_t lease = {};
+    lease.enable = true;
+    lease.start_ip.addr = ESP_IP4TOADDR(cfg.ip[0], cfg.ip[1], cfg.ip[2], start);
+    lease.end_ip.addr   = ESP_IP4TOADDR(cfg.ip[0], cfg.ip[1], cfg.ip[2], end);
+
+    err = esp_netif_dhcps_option(ap_netif, ESP_NETIF_OP_SET,
+                                 ESP_NETIF_REQUESTED_IP_ADDRESS,
+                                 &lease, sizeof(lease));
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "DHCP range set failed: %s", esp_err_to_name(err));
+    } else {
+        ESP_LOGI(TAG, "DHCP range: %u.%u.%u.%u-%u",
+                 cfg.ip[0], cfg.ip[1], cfg.ip[2], start, end);
+    }
+
+    err = esp_netif_dhcps_start(ap_netif);
+    if (err != ESP_OK && err != ESP_ERR_ESP_NETIF_DHCP_ALREADY_STARTED) {
+        ESP_LOGE(TAG, "DHCP start failed: %s", esp_err_to_name(err));
+    }
+}
+
+// Without this the DHCP server falls back to advertising its own address as the
+// DNS server (CONFIG_LWIP_DHCPS_ADD_DNS), which nothing on the device answers.
+void wifi_ap_set_client_dns(uint32_t dns_addr) {
+    static uint32_t s_offered_dns = 0;
+    if (dns_addr == 0 || dns_addr == s_offered_dns) return;
+
+    esp_netif_t *ap_netif = ap_netif_handle();
+    if (!ap_netif) return;
+
+    esp_netif_dns_info_t dns = {};
+    dns.ip.type = ESP_IPADDR_TYPE_V4;
+    dns.ip.u_addr.ip4.addr = dns_addr;
+    esp_err_t err = esp_netif_set_dns_info(ap_netif, ESP_NETIF_DNS_MAIN, &dns);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "AP DNS set failed: %s", esp_err_to_name(err));
+        return;
+    }
+
+    // OFFER_DNS can only be toggled while the DHCP server is stopped.
+    uint8_t offer = 1;
+    err = esp_netif_dhcps_stop(ap_netif);
+    if (err != ESP_OK && err != ESP_ERR_ESP_NETIF_DHCP_ALREADY_STOPPED) {
+        ESP_LOGE(TAG, "DHCP stop failed: %s", esp_err_to_name(err));
+        return;
+    }
+    err = esp_netif_dhcps_option(ap_netif, ESP_NETIF_OP_SET,
+                                 ESP_NETIF_DOMAIN_NAME_SERVER,
+                                 &offer, sizeof(offer));
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "DHCP DNS option failed: %s", esp_err_to_name(err));
+    }
+    err = esp_netif_dhcps_start(ap_netif);
+    if (err != ESP_OK && err != ESP_ERR_ESP_NETIF_DHCP_ALREADY_STARTED) {
+        ESP_LOGE(TAG, "DHCP start failed: %s", esp_err_to_name(err));
+        return;
+    }
+
+    s_offered_dns = dns_addr;
+    ESP_LOGI(TAG, "Offering DNS " IPSTR " to WiFi clients",
+             IP2STR(&dns.ip.u_addr.ip4));
 }
 
 int wifi_ap_client_count() {
@@ -33,32 +141,33 @@ int wifi_ap_get_clients(ClientInfo *out, int max_clients) {
     if (esp_wifi_ap_get_sta_list(&wifi_list) != ESP_OK) return 0;
 
     // Get IP addresses for each connected station via DHCP server
-    esp_netif_t *ap_netif = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
+    esp_netif_t *ap_netif = ap_netif_handle();
 
-    int count = 0;
-    for (int i = 0; i < wifi_list.num && count < max_clients; i++) {
-        memcpy(out[count].mac, wifi_list.sta[i].mac, 6);
+    int count = wifi_list.num;
+    if (count > max_clients) count = max_clients;
+    if (count <= 0) return 0;
 
-        // Look up IP via DHCP server
-        esp_netif_pair_mac_ip_t pair = {};
-        memcpy(pair.mac, wifi_list.sta[i].mac, 6);
-        if (ap_netif && esp_netif_dhcps_get_clients_by_mac(ap_netif, 1, &pair) == ESP_OK) {
-            uint32_t ip_addr = pair.ip.addr;
-            out[count].ip[0] = (ip_addr >> 0)  & 0xFF;
-            out[count].ip[1] = (ip_addr >> 8)  & 0xFF;
-            out[count].ip[2] = (ip_addr >> 16) & 0xFF;
-            out[count].ip[3] = (ip_addr >> 24) & 0xFF;
+    // One IPC call for every station rather than one per station.
+    esp_netif_pair_mac_ip_t pairs[ESP_WIFI_MAX_CONN_NUM] = {};
+    if (count > ESP_WIFI_MAX_CONN_NUM) count = ESP_WIFI_MAX_CONN_NUM;
+    for (int i = 0; i < count; i++) {
+        memcpy(out[i].mac, wifi_list.sta[i].mac, 6);
+        memcpy(pairs[i].mac, wifi_list.sta[i].mac, 6);
+    }
+
+    bool have_ips = ap_netif &&
+        esp_netif_dhcps_get_clients_by_mac(ap_netif, count, pairs) == ESP_OK;
+
+    for (int i = 0; i < count; i++) {
+        if (have_ips) {
+            uint32_t ip_addr = pairs[i].ip.addr;
+            out[i].ip[0] = (ip_addr >> 0)  & 0xFF;
+            out[i].ip[1] = (ip_addr >> 8)  & 0xFF;
+            out[i].ip[2] = (ip_addr >> 16) & 0xFF;
+            out[i].ip[3] = (ip_addr >> 24) & 0xFF;
         } else {
-            memset(out[count].ip, 0, 4);
+            memset(out[i].ip, 0, 4);
         }
-
-        char mac_name[18];
-        snprintf(mac_name, sizeof(mac_name), "%02X:%02X:%02X:%02X:%02X:%02X",
-            out[count].mac[0], out[count].mac[1], out[count].mac[2],
-            out[count].mac[3], out[count].mac[4], out[count].mac[5]);
-        out[count].hostname = String(mac_name);
-
-        count++;
     }
 
     return count;
@@ -91,15 +200,31 @@ String wifi_sta_ip_str() {
     return WiFi.localIP().toString();
 }
 
-String wifi_scan_networks() {
+uint32_t wifi_sta_dns_addr() {
+    esp_netif_t *sta_netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    if (!sta_netif) return 0;
+    esp_netif_dns_info_t dns = {};
+    if (esp_netif_get_dns_info(sta_netif, ESP_NETIF_DNS_MAIN, &dns) != ESP_OK) return 0;
+    return dns.ip.u_addr.ip4.addr;
+}
+
+void wifi_scan_start() {
+    if (WiFi.scanComplete() == WIFI_SCAN_RUNNING) return;
     ESP_LOGI(TAG, "Starting WiFi scan...");
-    int n = WiFi.scanNetworks(false, false, false, 300);
-    String json = "[";
-    for (int i = 0; i < n; i++) {
+    WiFi.scanNetworks(true, false, false, 300);
+}
+
+String wifi_scan_result() {
+    int16_t n = WiFi.scanComplete();
+    if (n == WIFI_SCAN_RUNNING) return "{\"scanning\":true}";
+
+    String json = "{\"scanning\":false,\"networks\":[";
+    for (int16_t i = 0; i < n; i++) {
         if (i > 0) json += ",";
         json += "{\"ssid\":\"";
-        // Escape any quotes in SSID
+        // Escape backslashes and quotes so an odd SSID can't break the JSON
         String ssid = WiFi.SSID(i);
+        ssid.replace("\\", "\\\\");
         ssid.replace("\"", "\\\"");
         json += ssid;
         json += "\",\"rssi\":";
@@ -108,8 +233,10 @@ String wifi_scan_networks() {
         json += (WiFi.encryptionType(i) != WIFI_AUTH_OPEN) ? "true" : "false";
         json += "}";
     }
-    json += "]";
-    WiFi.scanDelete();
-    ESP_LOGI(TAG, "Scan found %d networks", n);
+    json += "]}";
+    if (n >= 0) {
+        WiFi.scanDelete();
+        ESP_LOGI(TAG, "Scan found %d networks", n);
+    }
     return json;
 }

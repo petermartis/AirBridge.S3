@@ -79,6 +79,7 @@ static esp_netif_t *s_usb_netif = NULL;
 static bool s_usb_link_up = false;
 static bool s_usb_has_ip  = false;
 static esp_netif_ip_info_t s_usb_ip_info = {};
+static uint32_t s_usb_dns_addr = 0;
 static char s_status_msg[48] = "Init...";
 
 // Exposed for display debug line
@@ -93,11 +94,23 @@ typedef struct {
 
 static usb_netif_driver_t s_driver = {};
 
-// lwIP → USB: transmit a packet from the IP stack to the host
+// lwIP → USB: transmit a packet from the IP stack to the host.
+// Runs on the tcpip thread, so it must not block: tinyusb_net_send_sync() would
+// stall the whole IP stack (AP traffic, NAT, web server) waiting on the USB task.
+// The async path memcpys into the USB endpoint buffer from tud_network_xmit_cb(),
+// which can run after we return, so the payload is copied here first and released
+// by usb_free_tx_cb().
 static esp_err_t usb_netif_transmit(void *h, void *buffer, size_t len)
 {
     if (!tud_ready()) return ESP_FAIL;
-    return tinyusb_net_send_sync(buffer, len, NULL, pdMS_TO_TICKS(100));
+
+    void *copy = malloc(len);
+    if (!copy) return ESP_ERR_NO_MEM;
+    memcpy(copy, buffer, len);
+
+    esp_err_t ret = tinyusb_net_send_async(copy, len, copy);
+    if (ret != ESP_OK) free(copy);
+    return ret;
 }
 
 // lwIP → USB: transmit with free (not used, but required by interface)
@@ -147,10 +160,10 @@ static esp_err_t usb_recv_callback(void *buffer, uint16_t len, void *ctx)
     return ESP_OK;
 }
 
-// Free callback for tinyusb_net_send_sync (not needed for lwIP-originated buffers)
+// Releases the copy made in usb_netif_transmit(), once TinyUSB has consumed it
 static void usb_free_tx_cb(void *buffer, void *ctx)
 {
-    // No-op: lwIP manages its own buffers
+    free(buffer);
 }
 
 // ---------------------------------------------------------------------------
@@ -165,18 +178,27 @@ static void ip_event_handler(void *arg, esp_event_base_t base, int32_t id, void 
 
         s_usb_ip_info = event->ip_info;
         s_usb_has_ip = true;
+
+        esp_netif_dns_info_t dns = {};
+        if (esp_netif_get_dns_info(s_usb_netif, ESP_NETIF_DNS_MAIN, &dns) == ESP_OK) {
+            s_usb_dns_addr = dns.ip.u_addr.ip4.addr;
+        }
+
         snprintf(s_status_msg, sizeof(s_status_msg), "IP:" IPSTR,
                  IP2STR(&event->ip_info.ip));
         ESP_LOGI(TAG, "USB got IP: " IPSTR ", GW: " IPSTR,
                  IP2STR(&event->ip_info.ip), IP2STR(&event->ip_info.gw));
-    } else if (id == IP_EVENT_ETH_LOST_IP || id == IP_EVENT_STA_LOST_IP) {
-        // Can't safely check esp_netif for LOST events, just clear if we had IP
-        if (s_usb_has_ip) {
-            s_usb_has_ip = false;
-            memset(&s_usb_ip_info, 0, sizeof(s_usb_ip_info));
-            snprintf(s_status_msg, sizeof(s_status_msg), "IP lost");
-            ESP_LOGW(TAG, "USB lost IP");
-        }
+    } else if (id == IP_EVENT_ETH_LOST_IP) {
+        // Lost-IP events carry ip_event_got_ip_t too, so the interface is
+        // checkable: without this a STA lease drop would clear the USB uplink.
+        ip_event_got_ip_t *event = (ip_event_got_ip_t *)data;
+        if (event->esp_netif != s_usb_netif) return;
+
+        s_usb_has_ip = false;
+        s_usb_dns_addr = 0;
+        memset(&s_usb_ip_info, 0, sizeof(s_usb_ip_info));
+        snprintf(s_status_msg, sizeof(s_status_msg), "IP lost");
+        ESP_LOGW(TAG, "USB lost IP");
     }
 }
 
@@ -301,6 +323,11 @@ bool usb_net_is_online()
     return s_usb_has_ip;
 }
 
+uint32_t usb_net_dns_addr()
+{
+    return s_usb_dns_addr;
+}
+
 String usb_net_ip_str()
 {
     if (!s_usb_has_ip) return "";
@@ -311,6 +338,9 @@ String usb_net_ip_str()
 
 void usb_net_loop()
 {
+    // TinyUSB may be running even when netif creation failed during init
+    if (!s_usb_netif) return;
+
     // Track USB link state changes
     bool link_now = tud_ready();
 
@@ -327,6 +357,7 @@ void usb_net_loop()
         // Link went down
         s_usb_link_up = false;
         s_usb_has_ip = false;
+        s_usb_dns_addr = 0;
         esp_netif_action_disconnected(s_usb_netif, NULL, 0, NULL);
         esp_netif_action_stop(s_usb_netif, NULL, 0, NULL);
         snprintf(s_status_msg, sizeof(s_status_msg), "Disconnected");

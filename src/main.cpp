@@ -88,6 +88,14 @@ void loop() {
         else if (!has_uplink && g_prev_has_uplink) nat_disable();
         g_prev_has_uplink = has_uplink;
 
+        // WiFi clients need a real DNS server to resolve names through the
+        // uplink; otherwise the AP advertises itself and nothing answers.
+        if (has_uplink) {
+            uint32_t dns = usb_online ? usb_net_dns_addr() : 0;
+            if (dns == 0 && sta_online) dns = wifi_sta_dns_addr();
+            wifi_ap_set_client_dns(dns);
+        }
+
         display_update(g_cfg, usb_online,
                        sta_online, wifi_sta_rssi(),
                        g_clients, g_client_count);

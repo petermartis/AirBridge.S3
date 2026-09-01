@@ -8,6 +8,9 @@ void usb_net_init();
 // Check if USB network link is up and has an IP from the host
 bool usb_net_is_online();
 
+// DNS server learned from the host over DHCP (network byte order), 0 if none
+uint32_t usb_net_dns_addr();
+
 // Get the USB interface's IP as a string (empty if offline)
 String usb_net_ip_str();
 
