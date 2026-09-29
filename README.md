@@ -37,11 +37,13 @@ clients), and a built-in web UI lets you reconfigure everything on the fly.
 
 ## Hardware
 
-- [Waveshare ESP32-S3-GEEK](https://www.waveshare.com/wiki/ESP32-S3-GEEK) — ESP32-S3R2, 16 MB flash, 2 MB PSRAM, USB-A male plug
-- 1.14" ST7789 IPS LCD (135×240, SPI)
-- Native USB-OTG on GPIO19/20
+Two build targets share this tree; pick the PlatformIO env for what you have.
 
-### Pin Map
+### `esp32s3geek` — Waveshare ESP32-S3-GEEK (default)
+
+- [Waveshare ESP32-S3-GEEK](https://www.waveshare.com/wiki/ESP32-S3-GEEK) — ESP32-S3R2, 16 MB flash, 2 MB PSRAM, USB-A male plug
+- 1.14" ST7789 IPS LCD (135×240, SPI), built into the dongle
+- Native USB-OTG on GPIO19/20
 
 ```
 LCD MOSI   GPIO11      USB D+     GPIO20
@@ -51,6 +53,69 @@ LCD DC     GPIO8       RGB LED    GPIO38
 LCD RST    GPIO9
 LCD BL     GPIO7
 ```
+
+### `esp32s31` — ESP32-S31 + external 1.8" ST7735 TFT
+
+- ESP32-S31 (dual-core RISC-V, Wi-Fi 6, native USB-OTG 2.0 High-Speed) —
+  see [Toolchain status](#esp32-s31-toolchain-status-read-before-building) below
+- 1.8" ST7735 TFT, 128×160, SPI, backlight tied to 3V3 (always on)
+
+```
+Display   ESP32-S31   Purpose
+VCC       3V3         3.3V power
+GND       GND         Common ground
+LED       3V3         Backlight, always on
+SCK       GPIO12      SPI clock
+SDA       GPIO11      SPI MOSI
+CS        GPIO10      Chip select
+A0        GPIO9       Data/command (DC)
+RESET     GPIO8       Reset
+```
+
+#### ESP32-S31 toolchain status — read before building
+
+The S31 launched in 2026; its build tooling is not yet stable as of this
+writing:
+
+- **ESP-IDF**: S31 support is preview-only, added in **v6.1** (this
+  project's `esp32s3geek` env uses the stable **v5.5.5**).
+- **arduino-esp32**: S31 support is merged but only on the unreleased
+  `release/v4.0.x` branch (current stable tag has no S31 support).
+- **pioarduino/platform-espressif32** (the PlatformIO platform this
+  project uses): has **no** S31 board definition on its `main` or
+  `develop` branches. The `esp32s31` env instead pins the pre-release tag
+  `61.04.00-RC1` (Arduino core 4.0.0-RC1 / ESP-IDF 6.1.0) directly, and
+  this repo carries a local copy of that tag's `esp32-s31-coreboard-1.json`
+  board file in `boards/`, since no stable release ships it yet.
+
+Practical implications:
+
+- Expect rough edges from building on release-candidate toolchain
+  packages — none of this has been build-tested (no PlatformIO/ESP-IDF
+  toolchain was available in the environment this port was written in).
+- `patch_ecm_cmake.py`'s macOS NCM compatibility patches are literal
+  string replacements taken from the IDF 5.5.5 `tinyusb`/`esp_tinyusb`
+  sources. If IDF 6.1.0 ships different source text there, the patch
+  script's `applied == 0` idempotency check can't tell "already patched"
+  apart from "didn't match" — it will silently skip the patch instead of
+  failing the build. **Check the CMake configure output for "0 patch(es)
+  applied" lines on the first `esp32s31` build**, and if you see them,
+  diff `managed_components/espressif__tinyusb` /
+  `espressif__esp_tinyusb` against the strings in `patch_ecm_cmake.py`.
+- The S31's USB-OTG peripheral is genuine USB 2.0 High-Speed (480 Mbps),
+  unlike the S3's Full-Speed (12 Mbps). The NCM notification-ordering and
+  packet-filter ACK workarounds in `patch_ecm_cmake.py` were reverse
+  engineered against Full-Speed behavior and may need rework once tested
+  against real hardware.
+- The ST7735 display offset (`offset_x`/`offset_y` in
+  `src/LGFX_Config_s31.h`) is panel-batch-dependent (same issue as
+  Adafruit's ST7735 "tab color" quirk). The checked-in values are the
+  most commonly reported ones for this 128×160 module family, not
+  verified against a specific unit — if the image is shifted or clipped
+  on one edge on first boot, adjust those two values.
+- `dependencies.lock` is a component-manager snapshot resolved against
+  IDF 5.5.5; expect the component manager to re-resolve it for the S31
+  target's IDF 6.1.0 on first build.
 
 ## Architecture
 
@@ -68,7 +133,7 @@ LCD BL     GPIO7
 │  nat.cpp        lwIP NAPT (IP forwarding)      │
 ├────────────────────────────────────────────────┤
 │           Framework (hybrid build)             │
-│  Arduino 3.x API   +   ESP-IDF 5.5 (lwIP,     │
+│  Arduino 3.x/4.x API + ESP-IDF 5.5/6.1 (lwIP, │
 │  (WiFi, Preferences,    TinyUSB, esp_netif,    │
 │   WebServer)            NAPT, NVS)             │
 ├────────────────────────────────────────────────┤
@@ -84,10 +149,12 @@ LCD BL     GPIO7
 - **`sysmon.h`** — Inline helpers for CPU utilization (via FreeRTOS idle-task runtime, dual-core aware) and heap memory usage percentage.
 - **`nat.cpp`** — Enables ESP-IDF's built-in lwIP NAPT on the WiFi AP interface. Activated automatically when the USB link gets an IP; disabled when the link drops.
 - **`wifi_ap.cpp`** — Configures the ESP32 SoftAP with static IP, WPA2, and the Arduino DHCP server. Enumerates connected stations and resolves their IPs via the DHCP lease table.
-- **`display.cpp`** — Drives the ST7789 LCD via LovyanGFX with a full-screen sprite buffer for flicker-free updates. Shows SSID, password, AP IP, USB status, NAT state, and a scrolling client list.
+- **`display_s3geek.cpp`** — Drives the ST7789 LCD via LovyanGFX with a full-screen sprite buffer for flicker-free updates. Dense 3-column landscape layout (240×135): SSID/password/IP, USB/STA/NAT status, and a 2-column client grid, all on one screen.
+- **`display_s31.cpp`** — Drives the ST7735 LCD via LovyanGFX. Portrait (128×160), auto-cycling through three full-screen pages every few seconds: a large-font SSID/password/IP "join" screen, a USB/STA/NAT status screen with CPU/MEM bar gauges, and a scrolling client list. Only one of `display_s3geek.cpp` / `display_s31.cpp` is compiled per env — see `build_src_filter` in `platformio.ini` and the target check in `src/CMakeLists.txt`.
 - **`webserver.cpp`** — Minimal HTTP server (raw `WiFiServer`) serving an embedded HTML/CSS config page. Handles form POST to save settings to NVS and reboot.
 - **`config.cpp`** — Reads/writes AP configuration (SSID, password, IP, DHCP range) to ESP32 NVS flash using the Arduino `Preferences` library.
-- **`LGFX_Config.h`** — LovyanGFX hardware descriptor for the Waveshare ESP32-S3-GEEK's SPI bus, ST7789 panel geometry/offsets, and PWM backlight.
+- **`LGFX_Config_s3geek.h`** — LovyanGFX hardware descriptor for the Waveshare ESP32-S3-GEEK's SPI bus, ST7789 panel geometry/offsets, and PWM backlight.
+- **`LGFX_Config_s31.h`** — LovyanGFX hardware descriptor for the ESP32-S31's external ST7735 panel (no backlight control — LED is wired straight to 3V3).
 
 ### Why a Hybrid Build?
 
@@ -109,29 +176,33 @@ These patches are applied to the managed component at build time and don't modif
 ## Build & Flash
 
 Requires [PlatformIO](https://platformio.org/) (CLI or VS Code extension).
+Two envs are defined — `esp32s3geek` (default) and `esp32s31`; pick one with
+`-e` or set it as `default_envs` in `platformio.ini`.
 
 ```bash
-# Build
+# Build (defaults to esp32s3geek)
 pio run
+pio run -e esp32s31
 
 # Flash (see note below about boot mode)
-pio run -t upload
+pio run -e esp32s31 -t upload
 
 # Full clean rebuild (needed after sdkconfig changes)
-pio run -t clean && pio run
+pio run -e esp32s31 -t clean && pio run -e esp32s31
 ```
 
 ### Entering Bootloader Mode
 
 Since the firmware uses USB-OTG for NCM networking (not USB-Serial), the
-automatic upload reset circuit is unavailable. To flash:
+automatic upload reset circuit is unavailable on boards without separate
+bootloader-strapping hardware. To flash:
 
-1. Hold the **BOOT** button on the dongle
-2. Plug the dongle into USB (or press **RST** if already plugged in)
+1. Hold the **BOOT** button on the board
+2. Plug the board into USB (or press **RST** if already plugged in)
 3. Release **BOOT**
 4. Run `pio run -t upload`
 
-After flashing, unplug and re-plug the dongle to boot normally.
+After flashing, unplug and re-plug the board to boot normally.
 
 ### Serial Console
 
@@ -194,25 +265,33 @@ Click **Save & Reboot** — the device restarts with the new settings.
 
 ```
 src/
-├── main.cpp          Setup + main loop (init, periodic display refresh)
-├── config.cpp/h      NVS config storage with defaults
-├── wifi_ap.cpp/h     SoftAP init, client tracking via DHCP lease table
-├── display.cpp/h     ST7789 LCD rendering (LovyanGFX, sprite buffer)
-├── webserver.cpp/h   HTTP config interface (embedded HTML/CSS)
-├── usb_net.cpp/h     USB NCM tethering (TinyUSB + custom esp_netif)
-├── nat.cpp/h         NAT/NAPT (lwIP ip_napt_enable)
-├── sysmon.h          CPU utilization + memory usage monitoring
-├── LGFX_Config.h     LovyanGFX hardware config for ESP32-S3-GEEK
-└── idf_component.yml ESP-IDF managed component deps (esp_tinyusb)
+├── main.cpp             Setup + main loop (init, periodic display refresh)
+├── config.cpp/h         NVS config storage with defaults
+├── wifi_ap.cpp/h        SoftAP init, client tracking via DHCP lease table
+├── display.h            Shared display interface (both boards implement this)
+├── display_s3geek.cpp   ST7789 LCD rendering for esp32s3geek (LovyanGFX, sprite buffer)
+├── display_s31.cpp      ST7735 LCD rendering for esp32s31 (LovyanGFX, paged UI)
+├── webserver.cpp/h      HTTP config interface (embedded HTML/CSS)
+├── usb_net.cpp/h        USB NCM tethering (TinyUSB + custom esp_netif)
+├── nat.cpp/h            NAT/NAPT (lwIP ip_napt_enable)
+├── sysmon.h             CPU utilization + memory usage monitoring
+├── LGFX_Config_s3geek.h LovyanGFX hardware config for ESP32-S3-GEEK (ST7789)
+├── LGFX_Config_s31.h    LovyanGFX hardware config for ESP32-S31 (ST7735)
+├── CMakeLists.txt       Excludes the non-matching display_*.cpp per IDF_TARGET
+└── idf_component.yml    ESP-IDF managed component deps (esp_tinyusb)
 
-patch_ncm_cmake.py    Build-time NCM driver patches for macOS
-patch_tinyusb.py      PlatformIO pre-build hook (delegates to CMake patch)
-platformio.ini        PlatformIO build configuration
-sdkconfig.defaults    ESP-IDF Kconfig overrides
-partitions_16MB.csv   Custom partition table (16 MB flash)
+boards/
+└── esp32-s31-coreboard-1.json  Local copy of the S31 board def (see README's toolchain status section)
 
-docs/                 Technical spec, diagrams (SVG)
-hardware/             KiCad schematic + PCB for AirBridge Pro (next-gen)
+patch_ncm_cmake.py       Build-time NCM driver patches for macOS
+patch_tinyusb.py         PlatformIO pre-build hook (delegates to CMake patch)
+platformio.ini           PlatformIO build configuration (esp32s3geek + esp32s31 envs)
+sdkconfig.defaults       ESP-IDF Kconfig overrides for esp32s3geek
+sdkconfig.s31.defaults   ESP-IDF Kconfig overrides for esp32s31
+partitions_16MB.csv      Custom partition table (16 MB flash, both boards)
+
+docs/                    Technical spec, diagrams (SVG)
+hardware/                KiCad schematic + PCB for AirBridge Pro (next-gen)
 ```
 
 ## License

@@ -1,0 +1,51 @@
+# AirBridge.S3 — sdkconfig defaults for the ESP32-S31 port
+# Used by PlatformIO ESP-IDF hybrid build (pioarduino, env:esp32s31)
+#
+# Mirrors sdkconfig.defaults (ESP32-S3-GEEK). Differences from that file
+# are called out below; everything else applies for the same reasons.
+
+# --- Arduino-as-component ---
+CONFIG_AUTOSTART_ARDUINO=y
+CONFIG_FREERTOS_HZ=1000
+
+# --- IPv4 routing / NAT (NAPT) ---
+CONFIG_LWIP_IP_FORWARD=y
+CONFIG_LWIP_IPV4_NAPT=y
+
+# --- TinyUSB ECM networking (ECM preferred over NCM for macOS compatibility) ---
+CONFIG_TINYUSB_NET_MODE_ECM_RNDIS=y
+
+# --- Use custom PID to avoid macOS driver cache from NCM device ---
+CONFIG_TINYUSB_DESC_USE_DEFAULT_PID=n
+CONFIG_TINYUSB_DESC_CUSTOM_PID=0x4002
+
+# --- DMA mode: needed for interrupt EP notification delivery ---
+CONFIG_TINYUSB_MODE_DMA=y
+# CONFIG_TINYUSB_MODE_SLAVE is not set
+
+# CPU frequency: left unset, board default (320 MHz per boards/esp32-s31-
+# coreboard-1.json) applies. Unlike the S3, S31's max Kconfig choice isn't
+# confirmed to include 240 MHz, so we don't force the S3's value here.
+
+# --- FreeRTOS runtime stats (for CPU utilization monitoring) ---
+CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y
+CONFIG_FREERTOS_USE_TRACE_FACILITY=y
+
+# --- Disable HTTPS server (we only use HTTP) ---
+CONFIG_ESP_HTTPS_SERVER_ENABLE=n
+
+# --- USB OTG mode for TinyUSB (no serial console — use LCD for debug) ---
+CONFIG_ARDUINO_USB_CDC_ON_BOOT=0
+CONFIG_ARDUINO_USB_MODE=0
+
+# --- Disable USB-Serial/JTAG console ---
+# On the S3 this is required because USB-Serial/JTAG shares GPIO19/20 with
+# USB OTG. Early S31 documentation describes USB-Serial/JTAG as using a
+# dedicated PHY/port independent of USB OTG, which — if it holds up on
+# actual hardware — would let this be re-enabled for a real serial console
+# alongside NCM. Left disabled here to match known-working S3 behavior
+# until that's verified on real S31 hardware.
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+
+# --- Flash size ---
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y

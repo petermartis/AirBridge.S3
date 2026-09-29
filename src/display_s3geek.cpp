@@ -1,5 +1,5 @@
 #include "display.h"
-#include "LGFX_Config.h"
+#include "LGFX_Config_s3geek.h"
 #include "usb_net.h"
 #include "nat.h"
 #include "sysmon.h"

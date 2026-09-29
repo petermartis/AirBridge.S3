@@ -1,6 +1,7 @@
 //
 // AirBridge.S3 — Portable WiFi Access Point
 // Hardware: Waveshare ESP32-S3-GEEK (1.14" ST7789 LCD)
+//           or ESP32-S31 + external 1.8" ST7735 TFT (see platformio.ini)
 //
 // Features:
 //   - WiFi AP with configurable SSID/password

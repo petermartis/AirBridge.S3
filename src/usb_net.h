@@ -2,7 +2,7 @@
 #include <Arduino.h>
 
 // Initialize USB ECM (Ethernet Control Model) device
-// ESP32-S3 will appear as a USB Ethernet adapter to the host PC
+// The board will appear as a USB Ethernet adapter to the host PC
 void usb_net_init();
 
 // Check if USB network link is up and has an IP from the host

@@ -4,8 +4,10 @@
 #include <LovyanGFX.hpp>
 
 //
-// AirBridge.S3 — LovyanGFX hardware configuration
+// AirBridge.S3 — LovyanGFX hardware configuration (esp32s3geek env)
 // Waveshare ESP32-S3-GEEK: 1.14" ST7789 LCD, 135x240, SPI
+//
+// See LGFX_Config_s31.h for the ESP32-S31 + external 1.8" ST7735 variant.
 //
 
 class LGFX : public lgfx::LGFX_Device {

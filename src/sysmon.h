@@ -49,8 +49,8 @@ inline int sysmon_cpu_percent() {
 
     if (delta_run == 0) return 0;
 
-    // On dual-core ESP32-S3, total_runtime is wall-clock time but idle
-    // counters accumulate on BOTH cores, so scale by core count.
+    // On dual-core targets (S3, S31), total_runtime is wall-clock time but
+    // idle counters accumulate on BOTH cores, so scale by core count.
     int idle_pct = (int)((delta_idle * 100) / (delta_run * portNUM_PROCESSORS));
     int cpu_pct = 100 - idle_pct;
     if (cpu_pct < 0) cpu_pct = 0;
