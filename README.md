@@ -74,48 +74,69 @@ RESET     GPIO8       Reset
 
 #### ESP32-S31 toolchain status — read before building
 
-The S31 launched in 2026; its build tooling is not yet stable as of this
-writing:
+The S31 launched in 2026, on release-candidate tooling: ESP-IDF support
+landed as preview in **v6.1** (`esp32s3geek` uses the stable v5.5.5),
+arduino-esp32 support is merged only on the unreleased `release/v4.0.x`
+branch, and pioarduino/platform-espressif32 has no S31 board definition
+on its `main`/`develop` branches — the `esp32s31` env instead pins the
+pre-release tag `61.04.00-RC1` directly, with a local copy of that tag's
+`esp32-s31-coreboard-1.json` in `boards/` since no stable release ships
+it yet.
 
-- **ESP-IDF**: S31 support is preview-only, added in **v6.1** (this
-  project's `esp32s3geek` env uses the stable **v5.5.5**).
-- **arduino-esp32**: S31 support is merged but only on the unreleased
-  `release/v4.0.x` branch (current stable tag has no S31 support).
-- **pioarduino/platform-espressif32** (the PlatformIO platform this
-  project uses): has **no** S31 board definition on its `main` or
-  `develop` branches. The `esp32s31` env instead pins the pre-release tag
-  `61.04.00-RC1` (Arduino core 4.0.0-RC1 / ESP-IDF 6.1.0) directly, and
-  this repo carries a local copy of that tag's `esp32-s31-coreboard-1.json`
-  board file in `boards/`, since no stable release ships it yet.
+**This env has been build-verified**: `pio run -e esp32s31` produces a
+working `firmware.factory.bin` (1.22 MB flash, 57 KB RAM) from a clean
+checkout. Getting there needed real fixes, all committed here — not just
+following the toolchain's happy path:
 
-Practical implications:
-
-- Expect rough edges from building on release-candidate toolchain
-  packages — none of this has been build-tested (no PlatformIO/ESP-IDF
-  toolchain was available in the environment this port was written in).
-- `patch_ecm_cmake.py`'s macOS NCM compatibility patches are literal
-  string replacements taken from the IDF 5.5.5 `tinyusb`/`esp_tinyusb`
-  sources. If IDF 6.1.0 ships different source text there, the patch
-  script's `applied == 0` idempotency check can't tell "already patched"
-  apart from "didn't match" — it will silently skip the patch instead of
-  failing the build. **Check the CMake configure output for "0 patch(es)
-  applied" lines on the first `esp32s31` build**, and if you see them,
-  diff `managed_components/espressif__tinyusb` /
-  `espressif__esp_tinyusb` against the strings in `patch_ecm_cmake.py`.
-- The S31's USB-OTG peripheral is genuine USB 2.0 High-Speed (480 Mbps),
-  unlike the S3's Full-Speed (12 Mbps). The NCM notification-ordering and
-  packet-filter ACK workarounds in `patch_ecm_cmake.py` were reverse
-  engineered against Full-Speed behavior and may need rework once tested
-  against real hardware.
-- The ST7735 display offset (`offset_x`/`offset_y` in
-  `src/LGFX_Config_s31.h`) is panel-batch-dependent (same issue as
-  Adafruit's ST7735 "tab color" quirk). The checked-in values are the
-  most commonly reported ones for this 128×160 module family, not
-  verified against a specific unit — if the image is shifted or clipped
-  on one edge on first boot, adjust those two values.
-- `dependencies.lock` is a component-manager snapshot resolved against
-  IDF 5.5.5; expect the component manager to re-resolve it for the S31
-  target's IDF 6.1.0 on first build.
+- **LovyanGFX (`^1.2.0`, currently resolves to 1.2.30) has no idea the
+  S31 exists.** `patch_lovyangfx_s31.py` (new pre-build hook, mirrors the
+  existing `patch_ecm_cmake.py`/`patch_tinyusb.py` pattern) fixes three
+  gaps: its platform switch falls into classic-ESP32 code that needs a
+  ROM header (`rom/lldesc.h`) IDF 6.1.0 doesn't ship for this target yet;
+  its fast-GPIO helpers assume the legacy raw-register layout instead of
+  the struct-typed one the S31 actually uses (like its RISC-V siblings);
+  and its I2C driver assumes a register layout the S31's I2C peripheral
+  doesn't have at all (different `i2c_dev_t` shape — not a few renamed
+  fields, a different peripheral generation). Since this project only
+  ever uses `lgfx::Bus_SPI` on the S31 (see `LGFX_Config_s31.h`), I2C is
+  skipped outright rather than guessed at. Full rationale is in that
+  file's docstring.
+- **`patch_ecm_cmake.py`'s literal-text patches were written against IDF
+  5.5.5's TinyUSB source; several silently no-op'd against 6.1.0's.**
+  Verified via `pio run -e esp32s31 -v`, which prints an applied-count
+  per patch group:
+  - `CMakeLists.txt`, `usb_descriptors.c`, `ecm_rndis_device.c`,
+    `dcd_dwc2.c`: all patches apply cleanly (`dcd_dwc2.c` needed 3
+    anchor fixes for text IDF 6.1.0 changed — an added include, an added
+    condition clause, an added guard block — now fixed and applying
+    9/9).
+  - `descriptors_control.c`: needed an anchor fix for an added
+    `CFG_TUD_MTP` clause; now applies to both occurrences.
+  - `usbd.c`: **4 of 12** crash-diagnostic breadcrumb patches apply
+    (`0x60`, `0x80`–`0x87`). The other 8, all inside `process_set_config`
+    (`0x70`, `0xB0`–`0xB7`), don't — that function was restructured
+    enough in this TinyUSB version that re-deriving correct anchors
+    wasn't done here. This only affects the LCD's post-crash diagnostic
+    code (fewer checkpoints are instrumented); it doesn't affect the
+    build or normal operation.
+  - Run `pio run -e esp32s31 -v 2>&1 | grep patch_ecm_cmake` yourself to
+    re-check this after any TinyUSB/esp_tinyusb version bump.
+- **Still genuinely unverified — no real S31 hardware was available to
+  test against**:
+  - Whether the resulting firmware actually enumerates and tethers
+    correctly. The S31's USB-OTG is real USB 2.0 High-Speed (480 Mbps),
+    unlike the S3's Full-Speed (12 Mbps); the NCM notification-ordering
+    and packet-filter-ACK logic in `patch_ecm_cmake.py` was reverse
+    engineered against Full-Speed behavior and may need rework.
+  - The ST7735 display offset (`offset_x`/`offset_y` in
+    `src/LGFX_Config_s31.h`) — panel-batch-dependent (same issue as
+    Adafruit's ST7735 "tab color" quirk). The checked-in values are the
+    most commonly reported ones for this 128×160 module family, not
+    verified against a specific unit — if the image is shifted or
+    clipped on one edge on first boot, adjust those two values.
+  - `dependencies.lock` has been regenerated against the actual resolved
+    IDF 6.1.0 component set from a successful build (previously it only
+    reflected IDF 5.5.5).
 
 ## Architecture
 
@@ -171,7 +192,7 @@ The stock TinyUSB NCM driver doesn't fully work with macOS. A build-time patch s
 3. **Notification ordering** — Sends CONNECTED + SPEED notifications from `netd_open()` (during enumeration) and reorders SET_INTERFACE to ACK before sending notifications
 4. **Debug telemetry** — Exposes `ncm_notif_debug` variable for LCD display diagnostics
 
-These patches are applied to the managed component at build time and don't modify tracked source files.
+These patches are applied to the managed component at build time and don't modify tracked source files. Written and verified against `esp32s3geek`'s IDF 5.5.5 TinyUSB; see [ESP32-S31 toolchain status](#esp32-s31-toolchain-status-read-before-building) for exactly which of them needed anchor fixes for `esp32s31`'s IDF 6.1.0 TinyUSB, and which are still incomplete there.
 
 ## Build & Flash
 
@@ -283,8 +304,9 @@ src/
 boards/
 └── esp32-s31-coreboard-1.json  Local copy of the S31 board def (see README's toolchain status section)
 
-patch_ncm_cmake.py       Build-time NCM driver patches for macOS
+patch_ncm_cmake.py       Build-time NCM driver patches for macOS (both envs)
 patch_tinyusb.py         PlatformIO pre-build hook (delegates to CMake patch)
+patch_lovyangfx_s31.py   PlatformIO pre-build hook: LovyanGFX ESP32-S31 compat fixes
 platformio.ini           PlatformIO build configuration (esp32s3geek + esp32s31 envs)
 sdkconfig.defaults       ESP-IDF Kconfig overrides for esp32s3geek
 sdkconfig.s31.defaults   ESP-IDF Kconfig overrides for esp32s31

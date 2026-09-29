@@ -185,13 +185,14 @@ else:
 # Patch 3: esp_tinyusb/descriptors_control.c — add ECM to fallback check
 # =========================================================================
 ctrl_patches = [
-    # Full-speed fallback
+    # Full-speed and high-speed fallback (two occurrences, differently
+    # indented — and IDF 6.1's esp_tinyusb added a CFG_TUD_MTP > 0 check
+    # absent in 5.5.5 — so this only touches the condition line itself,
+    # not the following comment, to stay indentation- and
+    # MTP-clause-agnostic).
     (
-        '#if (CFG_TUD_CDC > 0 || CFG_TUD_MSC > 0 || CFG_TUD_NCM > 0)\n'
-        '        // We provide default config descriptors only for CDC, MSC and NCM classes',
-
-        '#if (CFG_TUD_CDC > 0 || CFG_TUD_MSC > 0 || CFG_TUD_NCM > 0 || CFG_TUD_ECM_RNDIS > 0)\n'
-        '        // We provide default config descriptors only for CDC, MSC, NCM, and ECM classes',
+        '#if (CFG_TUD_CDC > 0 || CFG_TUD_MSC > 0 || CFG_TUD_MTP > 0 || CFG_TUD_NCM > 0)',
+        '#if (CFG_TUD_CDC > 0 || CFG_TUD_MSC > 0 || CFG_TUD_MTP > 0 || CFG_TUD_NCM > 0 || CFG_TUD_ECM_RNDIS > 0)',
     ),
 ]
 
@@ -482,12 +483,18 @@ else:
 # =========================================================================
 dwc2_patches = [
     # 6a: Add extern for RTC NOINIT breadcrumb
+    # ESP-IDF 6.1's dwc2 driver added a "device/usbd.h" include between
+    # dcd.h and usbd_pvt.h (absent in IDF 5.5.5's copy) — anchor updated
+    # to match, or this whole patch group silently no-ops (see the
+    # esp32s31 toolchain-status note in README.md).
     (
         '#include "device/dcd.h"\n'
+        '#include "device/usbd.h"\n'
         '#include "device/usbd_pvt.h"\n'
         '#include "dwc2_common.h"',
 
         '#include "device/dcd.h"\n'
+        '#include "device/usbd.h"\n'
         '#include "device/usbd_pvt.h"\n'
         '#include "dwc2_common.h"\n'
         '\n'
@@ -549,23 +556,31 @@ dwc2_patches = [
         '    g_ecm_crash_stage = 0x55; // ISR: IN EP',
     ),
     # 6h: SOF breadcrumb
+    # IDF 6.1 added a "&& dwc2->gintmsk & GINTMSK_SOFM" guard to this
+    # condition, absent in 5.5.5 — anchor updated to match.
     (
-        '  if(gintsts & GINTSTS_SOF) {\n'
+        '  if(gintsts & GINTSTS_SOF && dwc2->gintmsk & GINTMSK_SOFM) {\n'
         '    dwc2->gintsts = GINTSTS_SOF;',
 
-        '  if(gintsts & GINTSTS_SOF) {\n'
+        '  if(gintsts & GINTSTS_SOF && dwc2->gintmsk & GINTMSK_SOFM) {\n'
         '    g_ecm_crash_stage = 0x56; // ISR: SOF\n'
         '    dwc2->gintsts = GINTSTS_SOF;',
     ),
     # 6i: ISR completed breadcrumb
+    # IDF 6.1 wraps the handle_incomplete_iso_in() call in an added
+    # "if (!pti_device_enabled(dwc2))" guard (absent in 5.5.5), adding one
+    # more level of closing brace before the function's own — anchor
+    # updated to match.
     (
-        '    handle_incomplete_iso_in(rhport);\n'
+        '      handle_incomplete_iso_in(rhport);\n'
+        '    }\n'
         '  }\n'
         '}\n'
         '\n'
         '#if CFG_TUD_TEST_MODE',
 
-        '    handle_incomplete_iso_in(rhport);\n'
+        '      handle_incomplete_iso_in(rhport);\n'
+        '    }\n'
         '  }\n'
         '\n'
         '  g_ecm_crash_stage = 0x5F; // ISR completed OK\n'
