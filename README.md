@@ -101,25 +101,30 @@ following the toolchain's happy path:
   ever uses `lgfx::Bus_SPI` on the S31 (see `LGFX_Config_s31.h`), I2C is
   skipped outright rather than guessed at. Full rationale is in that
   file's docstring.
-- **`patch_ecm_cmake.py`'s literal-text patches were written against IDF
-  5.5.5's TinyUSB source; several silently no-op'd against 6.1.0's.**
-  Verified via `pio run -e esp32s31 -v`, which prints an applied-count
-  per patch group:
+- **`patch_ecm_cmake.py`'s literal-text patches had drifted out of sync
+  with the current `espressif/tinyusb` managed component.** This isn't
+  actually an S31-vs-S3 or IDF-6.1-vs-5.5.5 issue — `espressif/tinyusb`'s
+  `idf_component.yml` only requires `idf: '>=5.0'`, so the component
+  registry resolves the same current TinyUSB release for both envs
+  regardless of ESP-IDF core version. `esp32s3geek` was hitting the exact
+  same stale anchors; fixing them here fixed both. Verified via
+  `pio run -e <env> -v`, which prints an applied-count per patch group
+  (identical for both envs):
   - `CMakeLists.txt`, `usb_descriptors.c`, `ecm_rndis_device.c`,
     `dcd_dwc2.c`: all patches apply cleanly (`dcd_dwc2.c` needed 3
-    anchor fixes for text IDF 6.1.0 changed — an added include, an added
-    condition clause, an added guard block — now fixed and applying
-    9/9).
+    anchor fixes for text the current TinyUSB release changed — an added
+    include, an added condition clause, an added guard block — now fixed
+    and applying 9/9).
   - `descriptors_control.c`: needed an anchor fix for an added
     `CFG_TUD_MTP` clause; now applies to both occurrences.
   - `usbd.c`: **4 of 12** crash-diagnostic breadcrumb patches apply
     (`0x60`, `0x80`–`0x87`). The other 8, all inside `process_set_config`
     (`0x70`, `0xB0`–`0xB7`), don't — that function was restructured
-    enough in this TinyUSB version that re-deriving correct anchors
+    enough in this TinyUSB release that re-deriving correct anchors
     wasn't done here. This only affects the LCD's post-crash diagnostic
     code (fewer checkpoints are instrumented); it doesn't affect the
-    build or normal operation.
-  - Run `pio run -e esp32s31 -v 2>&1 | grep patch_ecm_cmake` yourself to
+    build or normal operation, on either env.
+  - Run `pio run -e <env> -v 2>&1 | grep patch_ecm_cmake` yourself to
     re-check this after any TinyUSB/esp_tinyusb version bump.
 - **Still genuinely unverified — no real S31 hardware was available to
   test against**:
@@ -134,9 +139,13 @@ following the toolchain's happy path:
     most commonly reported ones for this 128×160 module family, not
     verified against a specific unit — if the image is shifted or
     clipped on one edge on first boot, adjust those two values.
-  - `dependencies.lock` has been regenerated against the actual resolved
-    IDF 6.1.0 component set from a successful build (previously it only
-    reflected IDF 5.5.5).
+  - `dependencies.lock` is a single file shared by both envs, but IDF
+    5.5.5 and 6.1.0 can resolve different compatible component versions
+    for it. It's committed here reflecting a successful `esp32s31`
+    build; building `esp32s3geek` will silently rewrite it back to
+    reflect IDF 5.5.5's resolution (harmless — the component manager
+    just regenerates it to match whatever it actually resolved — but
+    don't read a diff there as a sign anything broke).
 
 ## Architecture
 
@@ -192,7 +201,7 @@ The stock TinyUSB NCM driver doesn't fully work with macOS. A build-time patch s
 3. **Notification ordering** — Sends CONNECTED + SPEED notifications from `netd_open()` (during enumeration) and reorders SET_INTERFACE to ACK before sending notifications
 4. **Debug telemetry** — Exposes `ncm_notif_debug` variable for LCD display diagnostics
 
-These patches are applied to the managed component at build time and don't modify tracked source files. Written and verified against `esp32s3geek`'s IDF 5.5.5 TinyUSB; see [ESP32-S31 toolchain status](#esp32-s31-toolchain-status-read-before-building) for exactly which of them needed anchor fixes for `esp32s31`'s IDF 6.1.0 TinyUSB, and which are still incomplete there.
+These patches are applied to the managed component at build time and don't modify tracked source files. `espressif/tinyusb`'s `idf_component.yml` only requires `idf: '>=5.0'`, so the component registry resolves the same current TinyUSB release for both envs — it isn't pinned to whatever release existed when a given patch was written. See [ESP32-S31 toolchain status](#esp32-s31-toolchain-status-read-before-building) for which patches needed anchor fixes for the current release, and which are still incomplete.
 
 ## Build & Flash
 
