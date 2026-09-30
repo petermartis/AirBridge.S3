@@ -47,8 +47,11 @@ public:
             auto cfg = _bus.config();
             cfg.spi_host   = SPI2_HOST;   // FSPI / GPSPI2
             cfg.spi_mode   = 0;
-            cfg.freq_write = 27000000;    // ST7735 tops out lower than ST7789
-            cfg.freq_read  = 14000000;
+            cfg.freq_write = 10000000;    // matches the working raw spi_master test's
+                                           // clock_speed_hz — this wiring may not have
+                                           // the signal integrity for the ST7735's full
+                                           // rated speed (was 27MHz, panel never responded)
+            cfg.freq_read  = 10000000;
             cfg.pin_sclk   = 35;
             cfg.pin_mosi   = 37;
             cfg.pin_miso   = -1;
