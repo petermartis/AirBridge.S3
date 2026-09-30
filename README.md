@@ -184,6 +184,31 @@ If you rewire this to different pins later, re-check both: update
 before assuming a "compiles and boots but shows nothing" symptom is a
 display/offset issue rather than this.
 
+3. **Screen still blank white after both fixes above, and after
+   dropping the SPI clock from 27MHz to 10MHz to match the proven raw
+   test.** Firmware confirmed still running correctly (`Serial` shows
+   every `fillScreen()` call completing, no crash/reboot loop). Since
+   pins, GPIO bank, and clock now all match the user's own raw
+   `esp-idf` `spi_master` test byte-for-byte on the transport layer,
+   the next suspect is the init *command sequence* itself:
+   `lgfx::Panel_ST7735S`'s built-in `getInitCommands()` sends ~13
+   commands (`FRMCTR1-3`, `INVCTR`, `PWCTR1-5`, `VMCTR1`, `GMCTRP1`,
+   `GMCTRN1`) that the proven-working raw test never sends at all —
+   the raw test only does `SWRESET` → `SLPOUT` → `COLMOD=0x05` →
+   `MADCTL=0x00` → `INVON` → `NORON` → `DISPON`. `src/Panel_ST7735_Minimal.h`
+   is a `Panel_ST7735S` subclass that overrides `getInitCommands()` to
+   send exactly that minimal sequence and nothing else, and
+   `LGFX_Config_s31.h` now uses it instead of the stock class. If this
+   lights up the panel where the stock table didn't, one of those
+   extra power/gamma commands is putting this specific panel unit into
+   a non-responsive state and the fix is to keep the minimal table (or
+   find the one command in the stock list actually responsible and
+   drop only that one). If it's *still* blank, the fault is upstream
+   of the init sequence entirely (reset timing, a bad solder joint on
+   RESET/CS/DC, or a panel unit fault) and the raw test vs. this
+   firmware need to be compared at the logic-analyzer level, not the
+   source level.
+
 ## Architecture
 
 ### Stack

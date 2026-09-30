@@ -2,6 +2,7 @@
 
 #define LGFX_USE_V1
 #include <LovyanGFX.hpp>
+#include "Panel_ST7735_Minimal.h"
 
 //
 // AirBridge.S3 — LovyanGFX hardware configuration (esp32s31 env)
@@ -37,8 +38,12 @@
 //
 
 class LGFX : public lgfx::LGFX_Device {
-    lgfx::Panel_ST7735S _panel;
-    lgfx::Bus_SPI       _bus;
+    // Using the minimal-init-table subclass (see Panel_ST7735_Minimal.h)
+    // instead of lgfx::Panel_ST7735S directly, to test whether the stock
+    // driver's extra gamma/power-tuning commands are what's leaving this
+    // panel blank. Swap back to lgfx::Panel_ST7735S once that's settled.
+    Panel_ST7735_Minimal _panel;
+    lgfx::Bus_SPI        _bus;
 
 public:
     LGFX(void) {
