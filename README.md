@@ -65,12 +65,17 @@ Display   ESP32-S31   Purpose
 VCC       3V3         3.3V power
 GND       GND         Common ground
 LED       3V3         Backlight, always on
-SCK       GPIO12      SPI clock
-SDA       GPIO11      SPI MOSI
-CS        GPIO10      Chip select
-A0        GPIO9       Data/command (DC)
-RESET     GPIO8       Reset
+SCK       GPIO35      SPI clock
+SDA       GPIO37      SPI MOSI
+CS        GPIO39      Chip select
+A0        GPIO40      Data/command (DC)
+RESET     GPIO43
 ```
+
+(Confirmed against real hardware. An earlier GPIO8-12 plan here never
+matched what was actually wired — see [ESP32-S31 toolchain
+status](#esp32-s31-toolchain-status-read-before-building)'s bring-up
+section for how that surfaced and what else it broke.)
 
 #### ESP32-S31 toolchain status — read before building
 
@@ -126,19 +131,14 @@ following the toolchain's happy path:
     build or normal operation, on either env.
   - Run `pio run -e <env> -v 2>&1 | grep patch_ecm_cmake` yourself to
     re-check this after any TinyUSB/esp_tinyusb version bump.
-- **Still genuinely unverified — no real S31 hardware was available to
-  test against**:
-  - Whether the resulting firmware actually enumerates and tethers
-    correctly. The S31's USB-OTG is real USB 2.0 High-Speed (480 Mbps),
-    unlike the S3's Full-Speed (12 Mbps); the NCM notification-ordering
-    and packet-filter-ACK logic in `patch_ecm_cmake.py` was reverse
-    engineered against Full-Speed behavior and may need rework.
-  - The ST7735 display offset (`offset_x`/`offset_y` in
-    `src/LGFX_Config_s31.h`) — panel-batch-dependent (same issue as
-    Adafruit's ST7735 "tab color" quirk). The checked-in values are the
-    most commonly reported ones for this 128×160 module family, not
-    verified against a specific unit — if the image is shifted or
-    clipped on one edge on first boot, adjust those two values.
+- **Still genuinely unverified against real hardware**: whether the
+  resulting firmware actually enumerates and tethers correctly over
+  USB. The S31's USB-OTG is real USB 2.0 High-Speed (480 Mbps), unlike
+  the S3's Full-Speed (12 Mbps); the NCM notification-ordering and
+  packet-filter-ACK logic in `patch_ecm_cmake.py` was reverse
+  engineered against Full-Speed behavior and may need rework. (The
+  display side of the build *has* now been verified on real hardware —
+  see bring-up notes below.)
   - `dependencies.lock` is a single file shared by both envs, but IDF
     5.5.5 and 6.1.0 can resolve different compatible component versions
     for it. It's committed here reflecting a successful `esp32s31`
@@ -146,6 +146,43 @@ following the toolchain's happy path:
     reflect IDF 5.5.5's resolution (harmless — the component manager
     just regenerates it to match whatever it actually resolved — but
     don't read a diff there as a sign anything broke).
+
+#### Real-hardware bring-up notes
+
+First flash to actual ESP32-S31 hardware showed a lit backlight but a
+permanently blank white screen — no boot splash, no status pages, ever.
+`display_test/` (a separate, minimal PlatformIO project — pure Arduino
+framework, no WiFi/USB-NCM/NAT, only `LGFX_Config_s31.h` — see its own
+comments) isolated this to two real bugs, both now fixed, neither of
+which the build alone could have caught:
+
+1. **The original GPIO8-12 wiring plan never matched the actual
+   hardware.** The real board wires SCK/MOSI/CS/DC/RESET to
+   GPIO35/37/39/40/43 (confirmed against a known-working raw
+   `esp-idf` `spi_master` test the user had already run standalone
+   against the same panel). `LGFX_Config_s31.h` now reflects the real
+   wiring. Firmware built and ran fine either way — it was sending
+   valid SPI transactions the whole time, just to pins nothing was
+   listening on, which is exactly why this needed a screen (or a logic
+   analyzer) rather than a clean `-v` build log to catch.
+
+2. **The S31's actual pins for this wiring are all ≥GPIO32** (needing
+   the SoC's second GPIO bank — confirmed by reading
+   `framework-arduinoespressif32-libs/esp32s31/.../gpio_struct.h`,
+   which has real `out1`/`out1_w1ts`/`in1` registers), but
+   `patch_lovyangfx_s31.py`'s GPIO fast-path fix (point 2 in its
+   docstring) had put S31 in LovyanGFX's single-bank-only branch
+   (shared with C2/C3/C5/C6/C61/H2, none of which have >32 GPIOs to
+   begin with) rather than the dual-bank one already written for P4.
+   That would have silently toggled the *wrong physical pin's* bit for
+   CS/DC — compiles clean, boots clean, panel still never responds.
+   Moved to the P4 branch instead.
+
+If you rewire this to different pins later, re-check both: update
+`LGFX_Config_s31.h`'s pin numbers, and if any of them are ≥32, confirm
+`patch_lovyangfx_s31.py` still has S31 in the dual-bank GPIO branch
+before assuming a "compiles and boots but shows nothing" symptom is a
+display/offset issue rather than this.
 
 ## Architecture
 

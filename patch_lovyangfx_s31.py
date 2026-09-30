@@ -37,17 +37,27 @@ source, and update this docstring.
    this patch got this backwards and omitted the include, which built
    clean in isolation but broke on the very next file.
 
-2. common.hpp's fast GPIO helpers have two implementations: a modern one
-   (struct-typed `GPIO.out_w1ts.val` registers) used by C2/C3/C5/C6/C61/H2,
-   and a legacy one (raw `GPIO.out_w1ts` + dual-bank pin>=32 handling) for
-   classic ESP32. S31 falls into the legacy "#else" by default, but its
-   SoC headers use the modern struct-typed registers like its RISC-V
-   siblings, so the legacy code fails to compile. Fix: add S31 to the
-   modern branch. Caveat: that branch (like its C2/C3/etc. siblings)
-   doesn't implement the pin>=32 dual-bank path the legacy branch has —
-   fine here since every pin AirBridge.S3 drives on the S31 (SPI
-   CS/DC/RST/SCK/MOSI) is below GPIO32, but worth knowing if this project
-   ever wires the display to a higher pin.
+2. common.hpp's fast GPIO helpers have three implementations: classic
+   ESP32's legacy raw-register one (with dual-bank pin>=32 handling),
+   C2/C3/C5/C6/C61/H2's modern struct-typed one (`GPIO.out_w1ts.val`,
+   single-bank only — those chips top out under 32 GPIOs so they never
+   needed a bank1), and P4's modern struct-typed *and* dual-bank one
+   (`(pin & 32) ? &GPIO.out1_w1ts.val : &GPIO.out_w1ts.val`). S31 falls
+   into the classic legacy "#else" by default, which doesn't compile
+   against its struct-typed registers.
+
+   S31 needs the P4 shape, not the C2/C3/etc one: its SoC header has real
+   out1/out1_w1ts/out1_w1tc/in1 bank1 registers (confirmed by reading
+   framework-arduinoespressif32-libs/esp32s31/.../gpio_struct.h), and
+   AirBridge.S3's actual wiring drives CS/DC/RESET on GPIO39/40/43 — all
+   >=32 — so a single-bank implementation would silently toggle the
+   wrong physical pin's bit instead of failing to compile, and the
+   display would never respond to anything. (An earlier version of this
+   patch put S31 in the C2/C3/etc branch instead, on the mistaken
+   assumption this project would only ever use pins <32; caught only
+   after a real round-trip against actual hardware showed a correctly-
+   initializing, never-responding panel.) Fix: add S31 to the P4
+   condition instead.
 
 3. (Historical — no longer applied.) 1.2.30's Bus_SPI.hpp needed a
    lldesc_t fallback for the same missing-ROM-header reason as point 1.
@@ -226,16 +236,14 @@ patch_file(
     ),
 )
 
-# 2. common.hpp — add S31 to the modern struct-typed GPIO register branch
-# (anchor includes the C61 prefix so it can't match the unrelated
-# "#if defined ( CONFIG_IDF_TARGET_ESP32H2 )" SPI-register-macro block
-# earlier in the same file)
+# 2. common.hpp — add S31 to the P4 branch (modern struct-typed *and*
+# dual-bank registers — see docstring point 2 for why this, not the
+# C2/C3/etc branch, is the correct one for S31)
 patch_file(
     "esp32/common.hpp",
     "// [AirBridge.S3 S31 patched: common]",
-    "defined ( CONFIG_IDF_TARGET_ESP32C61 ) || defined ( CONFIG_IDF_TARGET_ESP32H2 )\n",
-    "defined ( CONFIG_IDF_TARGET_ESP32C61 ) || defined ( CONFIG_IDF_TARGET_ESP32H2 )"
-    " || defined ( CONFIG_IDF_TARGET_ESP32S31 )"
+    "#if defined ( CONFIG_IDF_TARGET_ESP32P4 )\n",
+    "#if defined ( CONFIG_IDF_TARGET_ESP32P4 ) || defined ( CONFIG_IDF_TARGET_ESP32S31 )"
     "  // [AirBridge.S3 S31 patched: common]\n",
 )
 

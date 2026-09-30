@@ -7,15 +7,22 @@
 // AirBridge.S3 — LovyanGFX hardware configuration (esp32s31 env)
 // External 1.8" ST7735 LCD, 128x160, SPI
 //
-// Wiring:
+// Wiring — as verified against a known-working raw esp-idf spi_master
+// test on the actual board (not the original GPIO8-12 plan this project
+// started from, which turned out not to match the real hardware):
 //   VCC   -> 3V3
 //   GND   -> GND
 //   LED   -> 3V3 (backlight always on, no GPIO control)
-//   SCK   -> GPIO12 (SPI clock)
-//   SDA   -> GPIO11 (SPI MOSI)
-//   CS    -> GPIO10 (chip select)
-//   A0    -> GPIO9  (D/C)
-//   RESET -> GPIO8
+//   SCK   -> GPIO35 (SPI clock)
+//   SDA   -> GPIO37 (SPI MOSI)
+//   CS    -> GPIO39 (chip select)
+//   A0    -> GPIO40 (D/C)
+//   RESET -> GPIO43
+//
+// invert/rgb_order below are set to match that same working test's init
+// sequence (it sends INVON / 0x21, and a MADCTL of 0x00 with no BGR bit
+// set) rather than the ST7735 defaults, since it's proven to actually
+// work on this panel.
 //
 // NOTE — display offset (offset_x/offset_y below): ST7735 controllers have
 // a fixed 132x162 GRAM regardless of the glass size soldered to them, and
@@ -42,10 +49,10 @@ public:
             cfg.spi_mode   = 0;
             cfg.freq_write = 27000000;    // ST7735 tops out lower than ST7789
             cfg.freq_read  = 14000000;
-            cfg.pin_sclk   = 12;
-            cfg.pin_mosi   = 11;
+            cfg.pin_sclk   = 35;
+            cfg.pin_mosi   = 37;
             cfg.pin_miso   = -1;
-            cfg.pin_dc     =  9;
+            cfg.pin_dc     = 40;
             _bus.config(cfg);
             _panel.setBus(&_bus);
         }
@@ -53,8 +60,8 @@ public:
         // ---- Panel (ST7735S, 128x160) ----
         {
             auto cfg = _panel.config();
-            cfg.pin_cs       = 10;
-            cfg.pin_rst      =  8;
+            cfg.pin_cs       = 39;
+            cfg.pin_rst      = 43;
             cfg.pin_busy     = -1;
             cfg.panel_width  = 128;
             cfg.panel_height = 160;
@@ -63,8 +70,8 @@ public:
             cfg.offset_x     = 2;   // see calibration note above
             cfg.offset_y     = 1;   // see calibration note above
             cfg.offset_rotation = 0;
-            cfg.invert       = false;
-            cfg.rgb_order    = false;  // BGR (ST7735 default)
+            cfg.invert       = true;   // matches the working test's INVON (0x21)
+            cfg.rgb_order    = true;   // matches the working test's MADCTL=0x00 (no BGR bit)
             cfg.dlen_16bit   = false;
             cfg.bus_shared   = false;
             _panel.config(cfg);
