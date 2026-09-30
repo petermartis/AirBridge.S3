@@ -91,6 +91,73 @@ source, and update this docstring.
    so nothing in this project ever instantiating lgfx::Bus_I2C means the
    type existing with undefined (never-called) methods is fine.
 
+6. Bus_SPI.inl / common.inl's SPI *clock-source* handling — found after
+   points 1-5 fixed the board's "compiles, boots, panel stays blank"
+   symptom on GPIO/pins but a *proven-working* raw esp-idf spi_master
+   test on the same wiring still worked where this firmware didn't (see
+   git history for the earlier failed attempts this ruled out: wiring,
+   GPIO bank, SPI clock speed setting, and the ST7735 init command
+   table were all confirmed byte-for-byte equivalent to the raw test's
+   and made no difference).
+
+   getSpiClockFrequency() picks its implementation by #if/#elif chain
+   over CONFIG_IDF_TARGET_*, one branch per chip family, because each
+   family's GP-SPI2 clock source is wired up differently: some chips
+   simply run it off APB (always 80MHz once CPU clock >=80MHz), others
+   (S3/C2/C3) read a mux-select bit, others (C5/C6/C61/H2) decode a
+   source-select + divider field. S31 matches none of those listed
+   branches, so it falls into the final generic "#else return
+   getApbFrequency()" — silently assuming an 80MHz source.
+
+   ESP32-P4 needed its own branch here instead of that generic
+   fallback, because P4's GP-SPI2/GP-SPI3 clock source is independently
+   selectable (XTAL / RC_FAST / SPLL) via dedicated HP_SYS_CLKRST
+   register fields, not simply tied to APB. S31 needs the same kind of
+   real decode instead of the 80MHz guess — but NOT by reusing P4's
+   branch outright. First attempt at this patch did exactly that
+   (reading framework-arduinoespressif32-libs/esp32s31/.../
+   hp_sys_clkrst_reg.h showed the *field* names/bit-positions
+   — HP_SYS_CLKRST_REG_GPSPI2_CLK_SRC_SEL / _HS_CLK_DIV_NUM /
+   _MST_CLK_DIV_NUM — are identical to P4's) and it failed to compile:
+   S31 packs each peripheral's clock config into its own one-register
+   HP_SYS_CLKRST_GPSPI{2,3}_CTRL0_REG, not P4's shared
+   PERI_CLK_CTRL116_REG/117_REG pair — P4's register *names* simply
+   don't exist for S31, even though the bitfields inside each
+   peripheral's own register match. Worse, the clk_src_sel *value*
+   encoding differs too: P4 uses 4 for its PLL source, S31 uses 2 (for
+   BBPLL) — confirmed against ESP-IDF's own
+   esp_hal_gpspi/esp32s31/include/hal/spi_ll.h
+   spi_ll_set_clk_source(), not guessed, after a first guess at
+   reusing P4's case labels would have silently mis-decoded a PLL
+   source on this chip. So this is its own S31 branch below, not a
+   condition added onto P4's.
+
+   If the real GP-SPI2 clock source on this board isn't actually
+   sitting at 80MHz (unknown without instrumenting it — S31 is new
+   enough that there's no public reference for its out-of-reset clock
+   tree state), every freq_write/freq_read divider LovyanGFX computes
+   is calculated against the wrong base clock. The SPI peripheral still
+   completes each transaction from the CPU's point of view (the status
+   bit LovyanGFX polls just reflects "shifted out however many bits at
+   whatever divider we told it," not whether that maps to a sane
+   real-world frequency) — so firmware runs with no crash, CS/DC/RESET
+   all toggle at the right moments, and the panel simply never
+   receives an intelligible byte. That matches every real-hardware
+   symptom seen so far exactly.
+
+   LGFX_SPI_CLOCK_TAKEOVER (which *actively* reprograms the clock
+   source to a known-good value rather than just reading whatever it
+   already is) is left alone for S31 — not extended the way point 2's
+   GPIO branch or this point's getSpiClockFrequency() are. Once
+   getSpiClockFrequency() reads the true current source, S31's default
+   out-of-reset source (XTAL, confirmed 0 = SPI_CLK_SRC_XTAL in the
+   same spi_ll.h) already divides evenly to the 10MHz this project
+   requests, so take-over would have nothing to improve — and
+   reusing P4's take-over register writes would mean writing the
+   wrong registers for the reason above. Bus_SPI.inl is untouched by
+   this point entirely; only common.inl's getSpiClockFrequency()
+   changes.
+
 Safe to drop all of these once upstream LovyanGFX adds real ESP32-S31
 support.
 """
@@ -300,4 +367,112 @@ patch_file(
     "    #if defined ( CONFIG_IDF_TARGET_ESP32P4 )\n",
     "    #if defined ( CONFIG_IDF_TARGET_ESP32P4 ) || defined ( CONFIG_IDF_TARGET_ESP32S31 )"
     "  // [AirBridge.S3 S31 patched: getApbFrequency]\n",
+)
+
+# 6a. common.inl — the HP_SYS_CLKRST_GPSPI{2,3}_* register/field macros
+# 6b below reads live in <soc/hp_sys_clkrst_reg.h>, which nothing on
+# this target includes otherwise: P4/C5/C6/C61 only get it via
+# Bus_SPI.inl's LGFX_SPI_CLOCK_TAKEOVER gate, which S31 deliberately
+# doesn't join (see docstring point 6 — that machinery assumes P4's
+# register map). Included directly here instead, scoped to S31 only.
+patch_file(
+    "esp32/common.inl",
+    "// [AirBridge.S3 S31 patched: hp_sys_clkrst include]",
+    "#include <driver/spi_common.h>\n"
+    "#include <driver/spi_master.h>\n",
+    "#include <driver/spi_common.h>\n"
+    "#include <driver/spi_master.h>\n"
+    "#if defined ( CONFIG_IDF_TARGET_ESP32S31 )"
+    "  // [AirBridge.S3 S31 patched: hp_sys_clkrst include]\n"
+    " #include <soc/hp_sys_clkrst_reg.h>\n"
+    "#endif\n",
+)
+
+# 6b. common.inl — getSpiClockFrequency() gets its own S31 branch (see
+# docstring point 6 for why this isn't just "add S31 to P4's condition"
+# the way the other points in this file are — the register map and the
+# clk_src_sel value encoding both genuinely differ from P4's, verified
+# against ESP-IDF's own esp32s31 SoC headers and HAL source, not
+# assumed from the bitfield-layout match alone). Bus_SPI.inl is left
+# untouched — LGFX_SPI_CLOCK_TAKEOVER stays P4/C5/C6/C61-only.
+#
+# Inserted as its own #elif ahead of the function's final "#else return
+# getApbFrequency()" fallback, which is what S31 would otherwise hit.
+# That fallback text is unique in this function (every other branch's
+# #else is chip-specific, like P4's `#else (void)spi_host; return
+# getApbFrequency(); #endif` immediately inside its own #if), so anchoring
+# on it doesn't risk matching a different one of the function's branches.
+patch_file(
+    "esp32/common.inl",
+    "// [AirBridge.S3 S31 patched: getSpiClockFrequency]",
+    "#else\n"
+    "    (void)spi_host;\n"
+    "    return getApbFrequency();\n"
+    "#endif\n"
+    "#endif\n"
+    "  }\n",
+    "#elif defined ( CONFIG_IDF_TARGET_ESP32S31 )"
+    "  // [AirBridge.S3 S31 patched: getSpiClockFrequency]\n"
+    "    // S31's GP-SPI2/GP-SPI3 clock config each live in their own\n"
+    "    // one-register CTRL0 (HP_SYS_CLKRST_GPSPI{2,3}_CTRL0_REG), not\n"
+    "    // P4's shared PERI_CLK_CTRL116/117 pair, and clk_src_sel's value\n"
+    "    // encoding is S31's own too (2 = BBPLL here vs P4's 4 = SPLL) —\n"
+    "    // both confirmed against esp_hal_gpspi/esp32s31/include/hal/\n"
+    "    // spi_ll.h's spi_ll_set_clk_source(), not assumed from the\n"
+    "    // bitfield layout inside each register matching P4's.\n"
+    "    uint32_t ctrl0;\n"
+    "    uint32_t source_sel;\n"
+    "    uint32_t hs_div;\n"
+    "    uint32_t mst_div;\n"
+    "    if (spi_host == SPI2_HOST)\n"
+    "    {\n"
+    "      ctrl0 = REG_READ(HP_SYS_CLKRST_GPSPI2_CTRL0_REG);\n"
+    "      source_sel = VALUE_GET_FIELD(ctrl0, HP_SYS_CLKRST_REG_GPSPI2_CLK_SRC_SEL);\n"
+    "      hs_div = VALUE_GET_FIELD(ctrl0, HP_SYS_CLKRST_REG_GPSPI2_HS_CLK_DIV_NUM);\n"
+    "      mst_div = VALUE_GET_FIELD(ctrl0, HP_SYS_CLKRST_REG_GPSPI2_MST_CLK_DIV_NUM);\n"
+    "    }\n"
+    "    else if (spi_host == SPI3_HOST)\n"
+    "    {\n"
+    "      ctrl0 = REG_READ(HP_SYS_CLKRST_GPSPI3_CTRL0_REG);\n"
+    "      source_sel = VALUE_GET_FIELD(ctrl0, HP_SYS_CLKRST_REG_GPSPI3_CLK_SRC_SEL);\n"
+    "      hs_div = VALUE_GET_FIELD(ctrl0, HP_SYS_CLKRST_REG_GPSPI3_HS_CLK_DIV_NUM);\n"
+    "      mst_div = VALUE_GET_FIELD(ctrl0, HP_SYS_CLKRST_REG_GPSPI3_MST_CLK_DIV_NUM);\n"
+    "    }\n"
+    "    else\n"
+    "    {\n"
+    "      return getApbFrequency();\n"
+    "    }\n"
+    "\n"
+    "    uint32_t source_hz;\n"
+    "    switch (source_sel)\n"
+    "    {\n"
+    "    case 0: source_hz = get_xtal_frequency(); break;      // SPI_CLK_SRC_XTAL\n"
+    "    case 1: source_hz = get_rc_fast_frequency(); break;   // SPI_CLK_SRC_RC_FAST\n"
+    "    case 2: source_hz = 480000000u; break;                // SPI_CLK_SRC_BBPLL\n"
+    "    default: source_hz = 480000000u; break; // Safe upper bound for an unknown source.\n"
+    "    }\n"
+    "    return source_hz / (hs_div + 1) / (mst_div + 1);\n"
+    "#else\n"
+    "    (void)spi_host;\n"
+    "    return getApbFrequency();\n"
+    "#endif\n"
+    "#endif\n"
+    "  }\n",
+)
+
+# 6f. common.inl — the get_rc_fast_frequency() lambda used by the P4
+# branch above (its RC_FAST source_sel case) is itself declared under a
+# separate, narrower guard that never included P4's own sibling S31.
+# Without this, 6e's P4 branch compiles for S31 but calls an
+# undeclared function the moment it hits the RC_FAST case.
+patch_file(
+    "esp32/common.inl",
+    "// [AirBridge.S3 S31 patched: get_rc_fast_frequency]",
+    "#if defined ( CONFIG_IDF_TARGET_ESP32C5 ) || defined ( CONFIG_IDF_TARGET_ESP32C61 ) \\\n"
+    " || defined ( CONFIG_IDF_TARGET_ESP32C6 ) || defined ( CONFIG_IDF_TARGET_ESP32H2 ) \\\n"
+    " || defined ( CONFIG_IDF_TARGET_ESP32P4 )\n",
+    "// [AirBridge.S3 S31 patched: get_rc_fast_frequency]\n"
+    "#if defined ( CONFIG_IDF_TARGET_ESP32C5 ) || defined ( CONFIG_IDF_TARGET_ESP32C61 ) \\\n"
+    " || defined ( CONFIG_IDF_TARGET_ESP32C6 ) || defined ( CONFIG_IDF_TARGET_ESP32H2 ) \\\n"
+    " || defined ( CONFIG_IDF_TARGET_ESP32P4 ) || defined ( CONFIG_IDF_TARGET_ESP32S31 )\n",
 )
