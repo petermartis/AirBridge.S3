@@ -35,6 +35,8 @@ void wifi_ap_init(const APConfig &cfg) {
     WiFi.softAP(cfg.ssid.c_str(), cfg.password.c_str(), 1, 0, 10);
     ESP_LOGE(TAG, "softAP OK");
 
+    wifi_apply_tx_power(cfg.tx_power_dbm);
+
     wifi_ap_apply_dhcp_range(cfg);
     ESP_LOGE(TAG, "apply_dhcp_range OK");
 
@@ -42,6 +44,19 @@ void wifi_ap_init(const APConfig &cfg) {
         cfg.ssid.c_str(),
         config_ip_str(cfg.ip).c_str(),
         cfg.repeater_on ? "AP+STA" : "AP");
+}
+
+// esp_wifi_set_max_tx_power() takes units of 0.25dBm over range [8,84]
+// (2-20dBm) and only actually supports 11 discrete power levels within
+// that range -- any other value gets silently rounded down to one of
+// them by the driver. The web UI only offers those 11 exact dBm values,
+// so what's configured is what's actually applied, with no hidden
+// rounding to explain. Must be called after WiFi is started (softAP()
+// already is, by the time wifi_ap_init() calls this).
+void wifi_apply_tx_power(int8_t dbm) {
+    if (dbm < 2) dbm = 2;
+    if (dbm > 20) dbm = 20;
+    esp_wifi_set_max_tx_power(dbm * 4);
 }
 
 // The DHCP server only accepts option changes while stopped, and rejects a

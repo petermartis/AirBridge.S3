@@ -118,6 +118,22 @@ static const char HTML_PAGE[] PROGMEM = R"rawhtml(
       <input type="number" name="dhcp_e" value="%DE%" min="2" max="255" required>
     </div>
 
+    <h2>&#128246; Radio</h2>
+    <label>Transmit Power (higher = more range, faster battery drain)</label>
+    <select name="tx_power">
+      <option value="20" %TXP_20%>20 dBm &mdash; max range</option>
+      <option value="18" %TXP_18%>18 dBm</option>
+      <option value="16" %TXP_16%>16 dBm</option>
+      <option value="15" %TXP_15%>15 dBm</option>
+      <option value="14" %TXP_14%>14 dBm</option>
+      <option value="13" %TXP_13%>13 dBm &mdash; balanced</option>
+      <option value="11" %TXP_11%>11 dBm</option>
+      <option value="8" %TXP_8%>8 dBm</option>
+      <option value="7" %TXP_7%>7 dBm</option>
+      <option value="5" %TXP_5%>5 dBm</option>
+      <option value="2" %TXP_2%>2 dBm &mdash; max battery life</option>
+    </select>
+
     <h2>&#128246; WiFi Repeater</h2>
     <div class="toggle">
       <label class="toggle">
@@ -325,6 +341,17 @@ static String build_page() {
     page.replace("%DS%", String(current_cfg->dhcp_start));
     page.replace("%DE%", String(current_cfg->dhcp_end));
 
+    // Transmit power: mark whichever of the 11 discrete levels (see
+    // wifi_apply_tx_power()) matches the saved value as selected.
+    {
+        static const int8_t levels[] = {20, 18, 16, 15, 14, 13, 11, 8, 7, 5, 2};
+        for (int8_t lvl : levels) {
+            char ph[16];
+            snprintf(ph, sizeof(ph), "%%TXP_%d%%", lvl);
+            page.replace(ph, (current_cfg->tx_power_dbm == lvl) ? "selected" : "");
+        }
+    }
+
     // Repeater fields
     page.replace("%REP_CHK%", current_cfg->repeater_on ? "checked" : "");
     page.replace("%REP_SHOW%", current_cfg->repeater_on ? "show" : "");
@@ -385,6 +412,20 @@ static void handle_save(WiFiClient &client, const String &body) {
         return;
     }
 
+    // Must match one of wifi_apply_tx_power()'s 11 actually-achievable
+    // levels (see its comment) -- same set the <select> offers, so a
+    // normal form submission always matches exactly.
+    static const int8_t tx_levels[] = {20, 18, 16, 15, 14, 13, 11, 8, 7, 5, 2};
+    int tx_power = get_form_field(body, "tx_power").toInt();
+    bool tx_power_valid = false;
+    for (int8_t lvl : tx_levels) {
+        if (tx_power == lvl) { tx_power_valid = true; break; }
+    }
+    if (!tx_power_valid) {
+        send_response(client, 400, "text/plain", "Invalid transmit power");
+        return;
+    }
+
     // Repeater fields
     String rep_on_str = get_form_field(body, "rep_on");
     String rep_ssid   = get_form_field(body, "rep_ssid");
@@ -398,6 +439,7 @@ static void handle_save(WiFiClient &client, const String &body) {
     current_cfg->ip[3]        = ip[3];
     current_cfg->dhcp_start   = (uint8_t)ds;
     current_cfg->dhcp_end     = (uint8_t)de;
+    current_cfg->tx_power_dbm = (int8_t)tx_power;
     current_cfg->repeater_on  = (rep_on_str == "1");
     current_cfg->uplink_ssid  = rep_ssid;
     current_cfg->uplink_pass  = rep_pass;

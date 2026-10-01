@@ -7,6 +7,7 @@ struct APConfig {
     uint8_t  ip[4];         // e.g. {192,168,1,1}
     uint8_t  dhcp_start;    // last octet of range start
     uint8_t  dhcp_end;      // last octet of range end
+    int8_t   tx_power_dbm;  // WiFi transmit power, 2-20 dBm (range vs battery life)
 
     // WiFi repeater (STA uplink)
     bool     repeater_on;   // enable WiFi-to-WiFi repeater

@@ -22,6 +22,11 @@ int wifi_ap_client_count();
 // Call after the AP is up; restarts the DHCP server.
 void wifi_ap_apply_dhcp_range(const APConfig &cfg);
 
+// Set the WiFi radio's maximum transmit power, in dBm (2-20). Higher
+// power means longer range at the cost of faster battery drain. Must
+// be called after WiFi is started.
+void wifi_apply_tx_power(int8_t dbm);
+
 // Offer `dns_addr` (IPv4, network byte order) to WiFi clients via the AP's
 // DHCP server, so they can resolve names through the uplink. No-op if 0.
 void wifi_ap_set_client_dns(uint32_t dns_addr);

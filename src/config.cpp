@@ -20,6 +20,7 @@ void config_load(APConfig &cfg) {
     cfg.ip[3]      = prefs.getUChar("ip3", 1);
     cfg.dhcp_start = prefs.getUChar("dhcp_s", 2);
     cfg.dhcp_end   = prefs.getUChar("dhcp_e", 255);
+    cfg.tx_power_dbm = prefs.getChar("tx_pwr", 20);
 
     // WiFi repeater
     cfg.repeater_on  = prefs.getBool("rep_on", false);
@@ -46,6 +47,7 @@ void config_save(const APConfig &cfg) {
     prefs.putUChar("ip3", cfg.ip[3]);
     prefs.putUChar("dhcp_s", cfg.dhcp_start);
     prefs.putUChar("dhcp_e", cfg.dhcp_end);
+    prefs.putChar("tx_pwr", cfg.tx_power_dbm);
 
     // WiFi repeater
     prefs.putBool("rep_on", cfg.repeater_on);
