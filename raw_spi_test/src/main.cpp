@@ -135,7 +135,16 @@ static void tft_init(void)
 
     log_step("[raw_spi_test] spi_bus_add_device...");
     spi_device_interface_config_t devcfg = {};
-    devcfg.clock_speed_hz = 10000000;
+    // Dropped from 10MHz to 1MHz as a signal-integrity experiment: this
+    // exact test (previously "proven working") now shows colors that
+    // don't match ANY of the five colors the code sends (log says
+    // BLACK, screen shows magenta/yellow/grey/etc) -- that's data
+    // corruption in transit, not a sequencing/lag bug, and this clock
+    // speed was never actually tested in isolation on this specific
+    // test harness before (only on display_test, under a different,
+    // now-superseded symptom). Raise back toward 10MHz once/if this is
+    // confirmed to fix it.
+    devcfg.clock_speed_hz = 1000000;
     devcfg.mode = 0;
     devcfg.spics_io_num = PIN_NUM_CS;
     devcfg.queue_size = 1;
