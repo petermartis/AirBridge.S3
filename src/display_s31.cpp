@@ -247,6 +247,14 @@ void display_init() {
     sprite.createSprite(W, H);
 }
 
+void display_debug_step(const char *msg) {
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.setTextDatum(MC_DATUM);
+    tft.setTextFont(2);
+    tft.drawString(msg, W / 2, H / 2);
+}
+
 void display_boot_screen() {
     tft.fillScreen(COL_BG);
     tft.setTextColor(COL_HEADER_FG, COL_BG);

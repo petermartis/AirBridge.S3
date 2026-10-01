@@ -26,13 +26,15 @@
 // Temporary bring-up diagnostic: bisecting a silent hang somewhere in
 // setup() on real S31 hardware (no crash, no further output after
 // config_load()'s Preferences warnings) by checkpointing each major
-// init call. Uses ESP_LOGI, not Serial -- this env has no Arduino CDC
-// console (native USB is dedicated to NCM tethering; see platformio.ini),
-// so Serial writes may not go anywhere, or worse, block forever once
-// their buffer fills with nothing ever draining it. Remove once the
-// hang is found and fixed.
+// init call. Draws to the physical screen (not just ESP_LOGI) because
+// the USB console has proven unreliable during this early boot window
+// -- output printed before native-USB enumeration finishes can be
+// silently dropped, which is suspected to be why no checkpoint has
+// shown up there yet even though the display itself is confirmed
+// working (display_test). The screen isn't subject to that at all.
+// Remove once the real hang/crash is found and fixed.
 static const char *TAG_BOOT = "boot";
-#define BOOT_STEP(msg) ESP_LOGI(TAG_BOOT, msg)
+#define BOOT_STEP(msg) do { ESP_LOGI(TAG_BOOT, msg); display_debug_step(msg); } while (0)
 
 static APConfig g_cfg;
 static ClientInfo g_clients[10];
@@ -51,7 +53,9 @@ void setup() {
     // Will display after screen init
 
     // 1. Display init (LovyanGFX handles backlight on GPIO 7)
-    BOOT_STEP("display_init...");
+    // (not using BOOT_STEP here -- the screen isn't ready to draw to
+    // until display_init() itself has run; ESP_LOGI only for this one)
+    ESP_LOGI(TAG_BOOT, "display_init...");
     display_init();
     BOOT_STEP("display_init OK");
     if (rst != ESP_RST_POWERON && rst != ESP_RST_DEEPSLEEP) {
