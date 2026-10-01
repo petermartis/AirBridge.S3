@@ -124,6 +124,7 @@ struct Bus_IDF_SPI : public lgfx::Bus_NULL
     {
         gpio_set_level((gpio_num_t)_cfg.pin_dc, 0);
         uint8_t cmd = (uint8_t)data;
+        log_cmd(cmd);
         spi_transaction_t t = {};
         t.length = bit_length;
         t.tx_buffer = &cmd;
@@ -136,6 +137,7 @@ struct Bus_IDF_SPI : public lgfx::Bus_NULL
         gpio_set_level((gpio_num_t)_cfg.pin_dc, 1);
         uint8_t buf[4];
         pack_msb_first(data, bit_length, buf);
+        log_data(buf, (bit_length + 7) >> 3);
         spi_transaction_t t = {};
         t.length = bit_length;
         t.tx_buffer = buf;
@@ -148,6 +150,7 @@ struct Bus_IDF_SPI : public lgfx::Bus_NULL
         uint32_t bytelen = (bit_length + 7) >> 3;
         uint8_t unit[4];
         pack_msb_first(data, bit_length, unit);
+        log_repeat(unit, bytelen, count);
 
         static constexpr uint32_t CHUNK_UNITS = 128;
         uint8_t chunk[CHUNK_UNITS * 4];
@@ -198,6 +201,47 @@ struct Bus_IDF_SPI : public lgfx::Bus_NULL
     }
 
 private:
+    // Diagnostic instrumentation: a hex dump of exactly what's being sent,
+    // for the first few calls only (capped, so a full fillScreen's 160
+    // repeat-chunks doesn't flood the log). This exists to directly
+    // compare, byte-for-byte, against raw_spi_test's known-good sequence
+    // (proven on real hardware to cycle colors correctly and
+    // continuously) -- instead of continuing to guess from code review
+    // why display_test's panel still freezes after ~1-2 fills even
+    // though every spi_device_transmit() call reports success and the
+    // same command/chunk pattern repeats identically fill after fill.
+    static constexpr uint32_t LOG_CAP = 40;
+    static inline uint32_t s_log_count = 0;
+
+    static void log_cmd(uint8_t cmd)
+    {
+        if (s_log_count++ >= LOG_CAP) return;
+        ESP_LOGE("Bus_IDF_SPI", "CMD 0x%02X", cmd);
+    }
+
+    static void log_data(const uint8_t* buf, uint32_t bytelen)
+    {
+        if (s_log_count++ >= LOG_CAP) return;
+        char hex[3 * 4 + 1] = {0};
+        for (uint32_t i = 0; i < bytelen && i < 4; i++)
+        {
+            snprintf(hex + i * 3, 4, "%02X ", buf[i]);
+        }
+        ESP_LOGE("Bus_IDF_SPI", "DATA len=%lu: %s", (unsigned long)bytelen, hex);
+    }
+
+    static void log_repeat(const uint8_t* unit, uint32_t bytelen, uint32_t count)
+    {
+        if (s_log_count++ >= LOG_CAP) return;
+        char hex[3 * 4 + 1] = {0};
+        for (uint32_t i = 0; i < bytelen && i < 4; i++)
+        {
+            snprintf(hex + i * 3, 4, "%02X ", unit[i]);
+        }
+        ESP_LOGE("Bus_IDF_SPI", "REPEAT count=%lu bytelen=%lu unit=%s",
+                 (unsigned long)count, (unsigned long)bytelen, hex);
+    }
+
     // Diagnostic instrumentation: spi_device_transmit()'s return value was
     // never checked anywhere in this file before -- a failure there would
     // be completely silent (no hang, no log, nothing visible at all). This
