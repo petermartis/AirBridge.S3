@@ -3,6 +3,7 @@
 #include <WiFi.h>
 #include <esp_wifi.h>
 #include <esp_netif.h>
+#include <esp_event.h>
 #include <esp_log.h>
 #include <lwip/ip4_addr.h>
 #include <dhcpserver/dhcpserver.h>
@@ -220,63 +221,103 @@ uint32_t wifi_sta_dns_addr() {
     return dns.ip.u_addr.ip4.addr;
 }
 
-// Set once by wifi_scan_start() and folded into every subsequent
-// "RUNNING" redraw in wifi_scan_result() -- a one-shot message for
-// this was shown too briefly (one ~500ms poll interval) to read before
-// the next poll's "RUNNING" redraw replaced it.
-static int16_t s_scan_start_r = 0;
-static int s_scan_start_mode = 0;
+// Raw ESP-IDF scan, bypassing Arduino's WiFiScanClass entirely: on real
+// S31 hardware, WiFi.scanNetworks(true, ...) starts a scan successfully
+// (confirmed: returns WIFI_SCAN_RUNNING, correct WiFi mode) that then
+// never completes -- scanComplete() stayed at WIFI_SCAN_RUNNING for 40+
+// seconds straight (polled directly via curl, no browser involved).
+// That's consistent with Arduino's own WIFI_EVENT_SCAN_DONE subscription
+// never firing in this hybrid Arduino+ESP-IDF build, rather than the
+// underlying scan itself never finishing -- so this registers our own
+// handler directly on ESP-IDF's event loop instead of going through
+// WiFiGenericClass's event dispatch.
+static volatile bool s_scan_done = false;
+static bool s_scan_in_progress = false;
+static bool s_scan_handler_registered = false;
+
+static void on_wifi_scan_done(void*, esp_event_base_t, int32_t, void*) {
+    s_scan_done = true;
+}
 
 void wifi_scan_start() {
-    if (WiFi.scanComplete() == WIFI_SCAN_RUNNING) return;
+    if (s_scan_in_progress) return;
+
+    if (!s_scan_handler_registered) {
+        esp_event_handler_register(WIFI_EVENT, WIFI_EVENT_SCAN_DONE, &on_wifi_scan_done, nullptr);
+        s_scan_handler_registered = true;
+    }
+
+    // Matches what WiFi.scanNetworks() did internally: scanning needs
+    // the STA interface up even though this device's primary role here
+    // is AP.
+    WiFi.enableSTA(true);
+
+    wifi_scan_config_t config = {};
+    config.show_hidden = false;
+    config.scan_type = WIFI_SCAN_TYPE_ACTIVE;
+    config.scan_time.active.max = 300;
+
+    s_scan_done = false;
+    esp_err_t err = esp_wifi_scan_start(&config, false);
+    s_scan_in_progress = (err == ESP_OK);
+
     // Temporary bring-up diagnostic: this build has no working serial
     // console (CONFIG_ESP_CONSOLE_SECONDARY_NONE=y, see
     // sdkconfig.s31.defaults -- re-enabling USB-Serial/JTAG was tried
     // and produced no visible console on real S31 hardware), so
     // ESP_LOGx output here goes nowhere. Using the TFT instead, as
     // intended by that same sdkconfig comment ("use LCD for debug").
-    s_scan_start_r = WiFi.scanNetworks(true, false, false, 300);
-    s_scan_start_mode = (int)WiFi.getMode();
+    char buf[32];
+    snprintf(buf, sizeof(buf), "scan start e=%d m=%d", (int)err, (int)WiFi.getMode());
+    display_debug_step(buf);
 }
 
 String wifi_scan_result() {
-    int16_t n = WiFi.scanComplete();
-    char buf[32];
-    if (n == WIFI_SCAN_RUNNING) {
-        // Redrawn on every poll (the browser polls /scan every 500ms
-        // while scanning), so this stays on screen for as long as the
-        // scan keeps reporting RUNNING -- easily enough time to read it,
-        // unlike a one-shot message that the normal 2s UI cycle would
-        // quickly overwrite.
-        snprintf(buf, sizeof(buf), "RUNNING r=%d m=%d", s_scan_start_r, s_scan_start_mode);
-        display_debug_step(buf);
+    if (s_scan_in_progress && !s_scan_done) {
+        display_debug_step("scan RUNNING (raw)...");
         return "{\"scanning\":true}";
     }
-    if (n == WIFI_SCAN_FAILED) {
-        display_debug_step("scan FAILED");
-    } else {
-        snprintf(buf, sizeof(buf), "scan done n=%d", n);
-        display_debug_step(buf);
+    bool started_ok = s_scan_in_progress;
+    s_scan_in_progress = false;
+
+    if (!started_ok) {
+        display_debug_step("scan FAILED to start");
+        return "{\"scanning\":false,\"networks\":[]}";
     }
 
+    uint16_t count = 0;
+    esp_wifi_scan_get_ap_num(&count);
+
+    wifi_ap_record_t *records = nullptr;
+    if (count > 0) {
+        records = (wifi_ap_record_t *)malloc(count * sizeof(wifi_ap_record_t));
+        if (records && esp_wifi_scan_get_ap_records(&count, records) != ESP_OK) {
+            free(records);
+            records = nullptr;
+            count = 0;
+        }
+    }
+
+    char buf[32];
+    snprintf(buf, sizeof(buf), "scan done n=%u", (unsigned)count);
+    display_debug_step(buf);
+
     String json = "{\"scanning\":false,\"networks\":[";
-    for (int16_t i = 0; i < n; i++) {
+    for (uint16_t i = 0; i < count; i++) {
         if (i > 0) json += ",";
         json += "{\"ssid\":\"";
         // Escape backslashes and quotes so an odd SSID can't break the JSON
-        String ssid = WiFi.SSID(i);
+        String ssid = String((const char *)records[i].ssid);
         ssid.replace("\\", "\\\\");
         ssid.replace("\"", "\\\"");
         json += ssid;
         json += "\",\"rssi\":";
-        json += String(WiFi.RSSI(i));
+        json += String(records[i].rssi);
         json += ",\"enc\":";
-        json += (WiFi.encryptionType(i) != WIFI_AUTH_OPEN) ? "true" : "false";
+        json += (records[i].authmode != WIFI_AUTH_OPEN) ? "true" : "false";
         json += "}";
     }
     json += "]}";
-    if (n >= 0) {
-        WiFi.scanDelete();
-    }
+    if (records) free(records);
     return json;
 }
