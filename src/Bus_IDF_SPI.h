@@ -3,6 +3,8 @@
 #include <LovyanGFX.hpp>
 #include <driver/gpio.h>
 #include <driver/spi_master.h>
+#include <esp_log.h>
+#include <Arduino.h>
 
 // A LovyanGFX bus implementation backed directly by ESP-IDF's
 // spi_master driver (spi_bus_initialize / spi_bus_add_device /
@@ -64,7 +66,20 @@ struct Bus_IDF_SPI : public lgfx::Bus_NULL
         buscfg.quadhd_io_num = -1;
         buscfg.max_transfer_sz = 4096;
         esp_err_t err = spi_bus_initialize((spi_host_device_t)_cfg.spi_host, &buscfg, SPI_DMA_CH_AUTO);
-        if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) { return false; }
+        if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+            // Not silently swallowed: Panel_Device::init() (LovyanGFX)
+            // discards this function's return value and always reports
+            // success regardless, so this is the only place a failure
+            // here would ever be visible at all. The on-screen BOOT_STEP
+            // checkpoints can't show this either -- the screen itself
+            // needs this same bus, so if it's what's broken, nothing can
+            // ever draw. Flash the onboard RGB LED instead: it doesn't
+            // depend on SPI2_HOST at all, so it stays a reliable signal
+            // even in exactly the failure mode this is trying to catch.
+            ESP_LOGE("Bus_IDF_SPI", "spi_bus_initialize failed: %d (%s)", err, esp_err_to_name(err));
+            signal_init_failure();
+            return false;
+        }
 
         spi_device_interface_config_t devcfg = {};
         devcfg.clock_speed_hz = _cfg.freq_write;
@@ -72,6 +87,10 @@ struct Bus_IDF_SPI : public lgfx::Bus_NULL
         devcfg.spics_io_num = _cfg.pin_cs;
         devcfg.queue_size = 1;
         err = spi_bus_add_device((spi_host_device_t)_cfg.spi_host, &devcfg, &_dev);
+        if (err != ESP_OK) {
+            ESP_LOGE("Bus_IDF_SPI", "spi_bus_add_device failed: %d (%s)", err, esp_err_to_name(err));
+            signal_init_failure();
+        }
         return err == ESP_OK;
     }
 
@@ -171,6 +190,17 @@ struct Bus_IDF_SPI : public lgfx::Bus_NULL
     }
 
 private:
+    // Latches the onboard RGB LED solid red -- see the comment at the
+    // call site. #ifdef-guarded since RGB_BUILTIN is only defined on
+    // boards that actually have one; a board without it just skips this
+    // (ESP_LOGE above is still the fallback either way).
+    static void signal_init_failure(void)
+    {
+#ifdef RGB_BUILTIN
+        rgbLedWrite(RGB_BUILTIN, 255, 0, 0);
+#endif
+    }
+
     static void pack_msb_first(uint32_t data, uint_fast8_t bit_length, uint8_t* out)
     {
         uint32_t bytelen = (bit_length + 7) >> 3;
