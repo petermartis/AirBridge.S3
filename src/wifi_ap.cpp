@@ -221,13 +221,23 @@ uint32_t wifi_sta_dns_addr() {
 
 void wifi_scan_start() {
     if (WiFi.scanComplete() == WIFI_SCAN_RUNNING) return;
-    ESP_LOGI(TAG, "Starting WiFi scan...");
-    WiFi.scanNetworks(true, false, false, 300);
+    // ESP_LOGE, not ESP_LOGI: this board's configured log level filters
+    // INFO entirely (see main.cpp's BOOT_STEP) -- capturing and logging
+    // scanNetworks()'s actual return value (WIFI_SCAN_RUNNING on success,
+    // WIFI_SCAN_FAILED if esp_wifi_scan_start() itself rejected the
+    // request) tells apart "scan never started" from "scan started but
+    // its done-event never arrived", which silently discarding it as
+    // before could not.
+    int16_t r = WiFi.scanNetworks(true, false, false, 300);
+    ESP_LOGE(TAG, "scanNetworks() returned %d (mode=%d)", r, (int)WiFi.getMode());
 }
 
 String wifi_scan_result() {
     int16_t n = WiFi.scanComplete();
     if (n == WIFI_SCAN_RUNNING) return "{\"scanning\":true}";
+    if (n == WIFI_SCAN_FAILED) {
+        ESP_LOGE(TAG, "scanComplete() reports WIFI_SCAN_FAILED");
+    }
 
     String json = "{\"scanning\":false,\"networks\":[";
     for (int16_t i = 0; i < n; i++) {
@@ -247,7 +257,7 @@ String wifi_scan_result() {
     json += "]}";
     if (n >= 0) {
         WiFi.scanDelete();
-        ESP_LOGI(TAG, "Scan found %d networks", n);
+        ESP_LOGE(TAG, "Scan found %d networks", n);
     }
     return json;
 }

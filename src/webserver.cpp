@@ -3,12 +3,18 @@
 #include "usb_net.h"
 #include <WiFi.h>
 #include <WiFiClient.h>
+#include <DNSServer.h>
 #include <esp_log.h>
 
 static const char *TAG = "Web";
 
 static WiFiServer http_server(80);
+static DNSServer dns_server;
 static APConfig *current_cfg = nullptr;
+
+// Standard captive-portal DNS port; iOS/Android/Windows all query this
+// before they'll show the "Join" / auto-popup browser.
+static const uint16_t DNS_PORT = 53;
 
 // A config form is a few hundred bytes; anything larger is a bad or hostile
 // request and must not be turned into a heap reservation on a 320KB part.
@@ -383,14 +389,30 @@ static void handle_save(WiFiClient &client, const String &body) {
 void webserver_init(APConfig &cfg) {
     current_cfg = &cfg;
     http_server.begin();
+
+    // Captive portal: answer every DNS query with the AP's own IP, so a
+    // phone's OS-level connectivity check (e.g. iOS's
+    // captive.apple.com/hotspot-detect.html, Android's generate_204)
+    // resolves to this device instead of timing out. Combined with the
+    // "/" fallback below -- which already serves the full config page
+    // for any path the routing doesn't otherwise recognize -- that
+    // response looks nothing like what those checks expect (an empty
+    // 204, or one specific "Success" page), so the OS concludes a
+    // captive portal is present and auto-opens its built-in browser
+    // straight to this page, without the user needing to find the IP
+    // themselves.
+    dns_server.start(DNS_PORT, "*", WiFi.softAPIP());
+
     // Not Serial: this env has no Arduino CDC console (native USB is
     // dedicated to NCM tethering, see platformio.ini) -- an unattached
     // Serial write can block forever once its buffer fills with nothing
     // ever draining it.
-    ESP_LOGI(TAG, "Config server started on port 80");
+    ESP_LOGI(TAG, "Config server started on port 80, captive DNS on port 53");
 }
 
 void webserver_handle() {
+    dns_server.processNextRequest();
+
     WiFiClient client = http_server.accept();
     if (!client) return;
 
