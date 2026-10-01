@@ -135,16 +135,12 @@ static void tft_init(void)
 
     log_step("[raw_spi_test] spi_bus_add_device...");
     spi_device_interface_config_t devcfg = {};
-    // Dropped from 10MHz to 1MHz as a signal-integrity experiment: this
-    // exact test (previously "proven working") now shows colors that
-    // don't match ANY of the five colors the code sends (log says
-    // BLACK, screen shows magenta/yellow/grey/etc) -- that's data
-    // corruption in transit, not a sequencing/lag bug, and this clock
-    // speed was never actually tested in isolation on this specific
-    // test harness before (only on display_test, under a different,
-    // now-superseded symptom). Raise back toward 10MHz once/if this is
-    // confirmed to fix it.
-    devcfg.clock_speed_hz = 1000000;
+    // Restored to 10MHz: dropping to 1MHz as a signal-integrity
+    // experiment had zero effect on the "colors don't match the log"
+    // symptom (same mismatched colors at both speeds), which rules out
+    // clock speed/signal integrity as the cause. See the INVON change
+    // below for the actual explanation.
+    devcfg.clock_speed_hz = 10000000;
     devcfg.mode = 0;
     devcfg.spics_io_num = PIN_NUM_CS;
     devcfg.queue_size = 1;
@@ -174,7 +170,18 @@ static void tft_init(void)
         tft_send_data(&data, 1);
     }
 
-    tft_send_cmd(0x21); // INVON, many ST7735 modules need this
+    // Switched from INVON (0x21) to INVOFF (0x20) as a controlled test:
+    // the "colors don't match the log" symptom (log says BLACK, screen
+    // shows white; log says GREEN, screen shows magenta) is an EXACT
+    // bitwise match for each color's complement under display
+    // inversion -- RED(0xF800)->0x07FF(cyan), GREEN(0x07E0)->0xF81F
+    // (magenta), BLUE(0x001F)->0xFFE0(yellow), WHITE<->BLACK -- not
+    // random corruption, and not an RGB/BGR channel swap (which could
+    // only turn one pure color into another pure color, never produce
+    // magenta/yellow from solid R/G/B fills). INVON was doing exactly
+    // what it's documented to do the whole time. Confirms/refutes that
+    // theory: colors should now show as their literal names.
+    tft_send_cmd(0x20); // INVOFF
     vTaskDelay(pdMS_TO_TICKS(10));
 
     tft_send_cmd(0x13); // NORON
