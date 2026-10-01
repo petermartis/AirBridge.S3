@@ -121,10 +121,11 @@ static const char HTML_PAGE[] PROGMEM = R"rawhtml(
 
     <div id="repFields" class="rep-fields %REP_SHOW%">
       <label>Upstream Network</label>
-      <select name="rep_ssid" id="repSsid">
-        <option value="%REP_SSID%">%REP_SSID_DISPLAY%</option>
-      </select>
+      <input type="text" name="rep_ssid" id="repSsid" value="%REP_SSID%"
+             list="repSsidList" maxlength="31" placeholder="Network name (SSID)">
+      <datalist id="repSsidList"></datalist>
       <div class="btn-scan" onclick="doScan()">&#128269; Scan Networks</div>
+      <div id="scanStatus" class="note" style="text-align:left;margin-top:4px"></div>
 
       <label>Upstream Password</label>
       <input type="password" name="rep_pass" value="%REP_PASS%" maxlength="63">
@@ -164,15 +165,19 @@ repToggle.addEventListener('change', function() {
   repFields.classList.toggle('show', this.checked);
 });
 function doScan() {
-  var sel = document.getElementById('repSsid');
-  sel.innerHTML = '<option value="">Scanning...</option>';
-  // The scan runs asynchronously on the device, so poll until it reports done
+  // The SSID field is a plain text input (type the network name
+  // directly) backed by a <datalist> for autocomplete -- scanning is a
+  // convenience, not a requirement, since it's unreliable on some
+  // hardware while the AP has an active client.
+  var list = document.getElementById('repSsidList');
+  var status = document.getElementById('scanStatus');
+  status.textContent = 'Scanning...';
   var tries = 0;
   function poll() {
     fetch('/scan').then(r => r.json()).then(res => {
       if (res.scanning) {
         if (++tries > 20) {
-          sel.innerHTML = '<option value="">Scan timed out</option>';
+          status.textContent = 'Scan timed out (type the network name manually above)';
           return;
         }
         setTimeout(poll, 500);
@@ -180,21 +185,20 @@ function doScan() {
       }
       var nets = res.networks || [];
       if (nets.length === 0) {
-        sel.innerHTML = '<option value="">No networks found</option>';
+        status.textContent = 'No networks found';
         return;
       }
-      sel.innerHTML = '';
-      var cur = '%REP_SSID%';
+      list.innerHTML = '';
       nets.sort((a,b) => b.rssi - a.rssi);
       nets.forEach(n => {
         var o = document.createElement('option');
         o.value = n.ssid;
-        o.textContent = n.ssid + ' (' + n.rssi + 'dBm' + (n.enc ? ', secured' : '') + ')';
-        if (n.ssid === cur) o.selected = true;
-        sel.appendChild(o);
+        o.label = n.ssid + ' (' + n.rssi + 'dBm' + (n.enc ? ', secured' : '') + ')';
+        list.appendChild(o);
       });
+      status.textContent = nets.length + ' network(s) found';
     }).catch(() => {
-      sel.innerHTML = '<option value="">Scan failed</option>';
+      status.textContent = 'Scan failed (type the network name manually above)';
     });
   }
   poll();
@@ -301,8 +305,6 @@ static String build_page() {
     page.replace("%REP_CHK%", current_cfg->repeater_on ? "checked" : "");
     page.replace("%REP_SHOW%", current_cfg->repeater_on ? "show" : "");
     page.replace("%REP_SSID%", current_cfg->uplink_ssid);
-    page.replace("%REP_SSID_DISPLAY%",
-        current_cfg->uplink_ssid.length() > 0 ? current_cfg->uplink_ssid : String("(none)"));
     page.replace("%REP_PASS%", current_cfg->uplink_pass);
 
     // STA status indicator
