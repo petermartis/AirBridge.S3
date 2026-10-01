@@ -64,22 +64,17 @@ static int draw_header(const APConfig &cfg) {
     return 13;
 }
 
-// Draws `value` right-aligned to fit within `maxWidth`, trying font4 first
-// and falling back to font2 if it doesn't fit at the given x.
+// Draws `value` at (x, y), trying font2 first and falling back to the
+// smaller font1 if it doesn't fit within maxWidth.
 static void draw_autosize(const String &value, int x, int y, int maxWidth, uint16_t color) {
     sprite.setTextDatum(TL_DATUM);
     sprite.setTextColor(color, COL_BG);
-    sprite.setTextFont(4);
+    sprite.setTextFont(2);
     if (sprite.textWidth(value) <= maxWidth) {
         sprite.drawString(value, x, y);
     } else {
-        sprite.setTextFont(2);
-        if (sprite.textWidth(value) <= maxWidth) {
-            sprite.drawString(value, x, y + 5);  // re-baseline vs font4
-        } else {
-            sprite.setTextFont(1);
-            sprite.drawString(value, x, y + 9);
-        }
+        sprite.setTextFont(1);
+        sprite.drawString(value, x, y + 4);  // re-baseline vs font2
     }
 }
 
@@ -93,17 +88,19 @@ static void draw_page_join(const APConfig &cfg, int y) {
     sprite.drawString("SSID", margin, y);
     y += 10;
     draw_autosize(cfg.ssid, margin, y, W - 2 * margin, COL_VALUE);
-    y += 32;
+    y += 20;
 
+    sprite.setTextFont(1);
     sprite.setTextColor(COL_LABEL, COL_BG);
     sprite.drawString("PASSWORD", margin, y);
     y += 10;
     draw_autosize(cfg.password, margin, y, W - 2 * margin, COL_PASS);
-    y += 32;
+    y += 20;
 
     sprite.drawFastHLine(margin, y, W - 2 * margin, COL_SEP);
     y += 6;
 
+    sprite.setTextFont(1);
     sprite.setTextColor(COL_LABEL, COL_BG);
     sprite.drawString("IP", margin, y);
     sprite.setTextFont(2);
