@@ -83,6 +83,17 @@ static const char HTML_PAGE[] PROGMEM = R"rawhtml(
   /* Repeater fields hidden when off */
   .rep-fields { display: none; }
   .rep-fields.show { display: block; }
+  /* SSID scan suggestions -- not a <datalist>: iOS Safari never renders
+     datalist suggestions at all, so this is a plain custom dropdown. */
+  .ssid-field { position: relative; }
+  .ssid-suggestions { position: absolute; left: 0; right: 0; top: 100%; z-index: 10;
+    background: #0f3460; border: 1px solid #333; border-top: none;
+    border-radius: 0 0 6px 6px; max-height: 160px; overflow-y: auto; display: none; }
+  .ssid-suggestions.show { display: block; }
+  .ssid-suggestions div { padding: 8px 10px; cursor: pointer; font-size: 0.85em;
+    border-bottom: 1px solid #222; }
+  .ssid-suggestions div:last-child { border-bottom: none; }
+  .ssid-suggestions div:hover, .ssid-suggestions div:active { background: #1a4a8a; }
 </style>
 </head>
 <body>
@@ -122,9 +133,11 @@ static const char HTML_PAGE[] PROGMEM = R"rawhtml(
 
     <div id="repFields" class="rep-fields %REP_SHOW%">
       <label>Upstream Network</label>
-      <input type="text" name="rep_ssid" id="repSsid" value="%REP_SSID%"
-             list="repSsidList" maxlength="31" placeholder="Network name (SSID)">
-      <datalist id="repSsidList"></datalist>
+      <div class="ssid-field">
+        <input type="text" name="rep_ssid" id="repSsid" value="%REP_SSID%"
+               maxlength="31" placeholder="Network name (SSID)" autocomplete="off">
+        <div id="repSsidSuggestions" class="ssid-suggestions"></div>
+      </div>
       <div class="btn-scan" onclick="doScan()">&#128269; Scan Networks</div>
       <div id="scanStatus" class="note" style="text-align:left;margin-top:4px"></div>
 
@@ -167,12 +180,15 @@ repToggle.addEventListener('change', function() {
 });
 function doScan() {
   // The SSID field is a plain text input (type the network name
-  // directly) backed by a <datalist> for autocomplete -- scanning is a
-  // convenience, not a requirement, since it's unreliable on some
-  // hardware while the AP has an active client.
-  var list = document.getElementById('repSsidList');
+  // directly) with a custom suggestion dropdown -- not a <datalist>,
+  // since iOS Safari never renders datalist suggestions at all.
+  // Scanning is a convenience, not a requirement: it's unreliable on
+  // some hardware while the AP has an active client.
+  var input = document.getElementById('repSsid');
+  var suggestions = document.getElementById('repSsidSuggestions');
   var status = document.getElementById('scanStatus');
   status.textContent = 'Scanning...';
+  suggestions.classList.remove('show');
   var tries = 0;
   function poll() {
     fetch('/scan').then(r => r.json()).then(res => {
@@ -189,15 +205,22 @@ function doScan() {
         status.textContent = 'No networks found';
         return;
       }
-      list.innerHTML = '';
       nets.sort((a,b) => b.rssi - a.rssi);
+      suggestions.innerHTML = '';
       nets.forEach(n => {
-        var o = document.createElement('option');
-        o.value = n.ssid;
-        o.label = n.ssid + ' (' + n.rssi + 'dBm' + (n.enc ? ', secured' : '') + ')';
-        list.appendChild(o);
+        var row = document.createElement('div');
+        row.textContent = n.ssid + ' (' + n.rssi + 'dBm' + (n.enc ? ', secured' : '') + ')';
+        row.onmousedown = function(e) {
+          // mousedown, not click: fires before the input's blur hides
+          // the dropdown, so the tap still registers on iOS/touch.
+          e.preventDefault();
+          input.value = n.ssid;
+          suggestions.classList.remove('show');
+        };
+        suggestions.appendChild(row);
       });
-      status.textContent = nets.length + ' network(s) found';
+      suggestions.classList.add('show');
+      status.textContent = nets.length + ' network(s) found -- tap one below';
     }).catch(() => {
       status.textContent = 'Scan failed (type the network name manually above)';
     });
