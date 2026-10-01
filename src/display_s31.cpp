@@ -238,7 +238,7 @@ static void draw_page_clients(ClientInfo *clients, int client_count, int y) {
 }
 
 void display_init() {
-    tft.init();
+    tft.initWithManualReset();
     tft.setRotation(0);  // portrait 128x160
     tft.fillScreen(COL_BG);
     tft.setBrightness(255);  // no-op: backlight is hardwired to 3V3

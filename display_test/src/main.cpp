@@ -14,8 +14,8 @@ void setup() {
     delay(500);  // let power/backlight settle before we touch SPI
     Serial.println("[display_test] setup() start");
 
-    tft.init();
-    Serial.println("[display_test] tft.init() returned");
+    tft.initWithManualReset();
+    Serial.println("[display_test] tft.initWithManualReset() returned");
     tft.setRotation(0);
 
     // Solid color fills: each visible for 1s even if text rendering has

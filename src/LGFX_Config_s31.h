@@ -116,4 +116,35 @@ public:
 
         setPanel(&_panel);
     }
+
+    // Replaces LovyanGFX's built-in hardware reset pulse (inside the
+    // normal init() -> Panel_Device::init() path: an 8ms low pulse /
+    // 64ms settle) with an exact match of the raw esp-idf spi_master
+    // test proven to work on this exact panel (5ms high confirm, 20ms
+    // low pulse, 150ms settle after release), then calls
+    // init_without_reset() so LovyanGFX's own shorter pulse never runs.
+    // Call this instead of plain init() until/unless it's confirmed the
+    // built-in timing isn't actually the problem.
+    void initWithManualReset(void)
+    {
+        int8_t pin_rst = _panel.config().pin_rst;
+        if (pin_rst >= 0)
+        {
+            gpio_config_t rst_conf = {};
+            rst_conf.pin_bit_mask = (1ULL << pin_rst);
+            rst_conf.mode = GPIO_MODE_OUTPUT;
+            rst_conf.pull_up_en = GPIO_PULLUP_DISABLE;
+            rst_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
+            rst_conf.intr_type = GPIO_INTR_DISABLE;
+            gpio_config(&rst_conf);
+
+            gpio_set_level((gpio_num_t)pin_rst, 1);
+            delay(5);
+            gpio_set_level((gpio_num_t)pin_rst, 0);
+            delay(20);
+            gpio_set_level((gpio_num_t)pin_rst, 1);
+            delay(150);
+        }
+        init_without_reset();
+    }
 };
