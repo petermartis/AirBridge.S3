@@ -19,37 +19,17 @@ void setup() {
     tft.setRotation(0);
 
     // Solid color fills: each visible for 1s even if text rendering has
-    // a problem of its own. If NONE of these show up, the panel isn't
-    // receiving/responding to SPI at all — check wiring
-    // (SCK12/MOSI11/CS10/DC9/RESET8) and the RESET line first.
-    // Diagnostic: spi_device_transmit()'s return value is now checked
-    // (see Bus_IDF_SPI::check()) and counted. Printing the running
-    // count/fail-count after each fill tells us, independent of what the
-    // panel actually shows, whether every fillScreen() issues the same
-    // number of SPI transactions and whether the driver itself ever
-    // reports one failing -- real hardware showed the screen visibly
-    // changing on the first fill only, then sticking, even though every
-    // Serial checkpoint below still fires normally (no hang, no crash).
-    auto log_bus_stats = [](const char *step) {
-        Serial.printf("[display_test] %s: bus calls=%lu fails=%lu\n", step,
-                      (unsigned long)Bus_IDF_SPI::transmitCount(),
-                      (unsigned long)Bus_IDF_SPI::transmitFailCount());
-    };
-
+    // a problem of its own.
     tft.fillScreen(TFT_RED);
     Serial.println("[display_test] filled RED");
-    log_bus_stats("after RED");
     delay(1000);
     tft.fillScreen(TFT_GREEN);
     Serial.println("[display_test] filled GREEN");
-    log_bus_stats("after GREEN");
     delay(1000);
     tft.fillScreen(TFT_BLUE);
     Serial.println("[display_test] filled BLUE");
-    log_bus_stats("after BLUE");
     delay(1000);
     tft.fillScreen(TFT_BLACK);
-    log_bus_stats("after BLACK");
 
     // Text + a border rectangle: if the colors above worked but this
     // looks shifted/cropped on one edge, that's the offset_x/offset_y
@@ -59,7 +39,6 @@ void setup() {
     tft.setTextFont(2);
     tft.drawString("DISPLAY OK", tft.width() / 2, tft.height() / 2);
     tft.drawRect(0, 0, tft.width(), tft.height(), TFT_YELLOW);
-    log_bus_stats("after text+rect");
     Serial.println("[display_test] setup() done");
 }
 

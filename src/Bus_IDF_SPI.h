@@ -9,17 +9,9 @@
 // A LovyanGFX bus implementation backed directly by ESP-IDF's
 // spi_master driver (spi_bus_initialize / spi_bus_add_device /
 // spi_device_transmit), in place of lgfx::Bus_SPI's own low-level
-// register-banging implementation.
-//
-// Why this exists: on ESP32-S31, lgfx::Bus_SPI silently produces no
-// visible result on this ST7735 panel (screen stays blank white, no
-// crash), despite every transport-layer detail it's responsible for —
-// wiring, GPIO dual-bank register handling, SPI clock speed, SPI clock
-// *source* (see patch_lovyangfx_s31.py point 6) — confirmed
-// byte-for-byte identical to a raw esp-idf spi_master test proven
-// working on this exact board/panel/wiring. Routing through that same
-// driver, rather than continuing to chase whatever's still different
-// in Bus_SPI's own register path, is what actually lit up the panel.
+// register-banging implementation, which never produced a visible
+// result on this ST7735 panel on ESP32-S31 despite correct wiring,
+// GPIO dual-bank handling, and SPI clock speed/source.
 //
 // Scope: write-only, matching what this project's ST7735 display
 // actually needs (no panel readback, no touch controller on this
@@ -43,14 +35,6 @@ struct Bus_IDF_SPI : public lgfx::Bus_NULL
     const config_t& config(void) const { return _cfg; }
     void config(const config_t& cfg) { _cfg = cfg; }
 
-    // Exposed so a caller (see display_test) can print these after a
-    // known sequence of draw calls and tell, independent of what's
-    // visible on the panel, whether the driver itself ever reported a
-    // failed transmit -- see the long comment on check() below for why
-    // that's the open question right now.
-    static uint32_t transmitCount(void) { return s_call_count; }
-    static uint32_t transmitFailCount(void) { return s_fail_count; }
-
     lgfx::bus_type_t busType(void) const override { return lgfx::bus_type_t::bus_spi; }
 
     bool init(void) override
@@ -72,18 +56,8 @@ struct Bus_IDF_SPI : public lgfx::Bus_NULL
         buscfg.sclk_io_num = _cfg.pin_sclk;
         buscfg.quadwp_io_num = -1;
         buscfg.quadhd_io_num = -1;
-        // Matches raw_spi_test's buscfg.max_transfer_sz (128*2+8 = 264)
-        // exactly: after fixing the byte-order bug in pack_lsb_first()
-        // and confirming byte-for-byte correct CASET/RASET/RAMWR output
-        // via hex dump, and after bus_idf_spi_test proved the panel
-        // stays blank white even calling Bus_IDF_SPI directly (bypassing
-        // LovyanGFX's Panel_LCD/LGFX_Device entirely), this was the one
-        // remaining field in spi_bus_config_t/spi_device_interface_
-        // config_t that differed at all from the proven-working raw
-        // test's setup -- every other field (pins, clock, mode, CS,
-        // queue_size) already matched exactly. Largest actual transfer
-        // this bus ever makes (writeBytes' 4092-byte chunk cap) is
-        // bigger than this, so that cap is lowered too, below.
+        // Largest single transaction this bus ever issues is writeBytes'
+        // 256-byte chunk cap below; sized to match.
         buscfg.max_transfer_sz = 264;
         esp_err_t err = spi_bus_initialize((spi_host_device_t)_cfg.spi_host, &buscfg, SPI_DMA_CH_AUTO);
         if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
@@ -136,7 +110,6 @@ struct Bus_IDF_SPI : public lgfx::Bus_NULL
     {
         gpio_set_level((gpio_num_t)_cfg.pin_dc, 0);
         uint8_t cmd = (uint8_t)data;
-        log_cmd(cmd);
         spi_transaction_t t = {};
         t.length = bit_length;
         t.tx_buffer = &cmd;
@@ -149,7 +122,6 @@ struct Bus_IDF_SPI : public lgfx::Bus_NULL
         gpio_set_level((gpio_num_t)_cfg.pin_dc, 1);
         uint8_t buf[4];
         pack_lsb_first(data, bit_length, buf);
-        log_data(buf, (bit_length + 7) >> 3);
         spi_transaction_t t = {};
         t.length = bit_length;
         t.tx_buffer = buf;
@@ -162,7 +134,6 @@ struct Bus_IDF_SPI : public lgfx::Bus_NULL
         uint32_t bytelen = (bit_length + 7) >> 3;
         uint8_t unit[4];
         pack_lsb_first(data, bit_length, unit);
-        log_repeat(unit, bytelen, count);
 
         static constexpr uint32_t CHUNK_UNITS = 128;
         uint8_t chunk[CHUNK_UNITS * 4];
@@ -202,9 +173,6 @@ struct Bus_IDF_SPI : public lgfx::Bus_NULL
         gpio_set_level((gpio_num_t)_cfg.pin_dc, dc ? 1 : 0);
         while (length > 0)
         {
-            // Capped to fit under buscfg.max_transfer_sz (264, see
-            // init() above) -- was 4092, larger than the bus now
-            // allows a single transaction to be.
             uint32_t n = length > 256 ? 256 : length;
             spi_transaction_t t = {};
             t.length = n * 8;
@@ -216,75 +184,12 @@ struct Bus_IDF_SPI : public lgfx::Bus_NULL
     }
 
 private:
-    // Diagnostic instrumentation: a hex dump of exactly what's being sent,
-    // for the first few calls only (capped, so a full fillScreen's 160
-    // repeat-chunks doesn't flood the log). This exists to directly
-    // compare, byte-for-byte, against raw_spi_test's known-good sequence
-    // (proven on real hardware to cycle colors correctly and
-    // continuously) -- instead of continuing to guess from code review
-    // why display_test's panel still freezes after ~1-2 fills even
-    // though every spi_device_transmit() call reports success and the
-    // same command/chunk pattern repeats identically fill after fill.
-    static constexpr uint32_t LOG_CAP = 40;
-    static inline uint32_t s_log_count = 0;
-
-    static void log_cmd(uint8_t cmd)
-    {
-        if (s_log_count++ >= LOG_CAP) return;
-        ESP_LOGE("Bus_IDF_SPI", "CMD 0x%02X", cmd);
-    }
-
-    static void log_data(const uint8_t* buf, uint32_t bytelen)
-    {
-        if (s_log_count++ >= LOG_CAP) return;
-        char hex[3 * 4 + 1] = {0};
-        for (uint32_t i = 0; i < bytelen && i < 4; i++)
-        {
-            snprintf(hex + i * 3, 4, "%02X ", buf[i]);
-        }
-        ESP_LOGE("Bus_IDF_SPI", "DATA len=%lu: %s", (unsigned long)bytelen, hex);
-    }
-
-    static void log_repeat(const uint8_t* unit, uint32_t bytelen, uint32_t count)
-    {
-        if (s_log_count++ >= LOG_CAP) return;
-        char hex[3 * 4 + 1] = {0};
-        for (uint32_t i = 0; i < bytelen && i < 4; i++)
-        {
-            snprintf(hex + i * 3, 4, "%02X ", unit[i]);
-        }
-        ESP_LOGE("Bus_IDF_SPI", "REPEAT count=%lu bytelen=%lu unit=%s",
-                 (unsigned long)count, (unsigned long)bytelen, hex);
-    }
-
-    // Diagnostic instrumentation: spi_device_transmit()'s return value was
-    // never checked anywhere in this file before -- a failure there would
-    // be completely silent (no hang, no log, nothing visible at all). This
-    // is a real gap given the symptom on real S31 hardware: the first
-    // fillScreen() after init visibly lands (white -> light-blue), but
-    // every later one -- same writeDataRepeat() path, same bus, same
-    // device handle -- produces no further visible change, with every
-    // Serial.println() checkpoint still firing normally (no hang, no
-    // crash). check() logs the *first* failing transmit only (who, which
-    // call number since boot, esp_err_t), via the same ESP_LOGE path
-    // already proven to reach the console, and red-flashes the onboard
-    // LED -- a channel independent of the SPI bus under suspicion --
-    // without flooding the log or changing behavior on success.
-    static inline uint32_t s_call_count = 0;
-    static inline uint32_t s_fail_count = 0;
-
     static void check(esp_err_t err, const char* who)
     {
-        s_call_count++;
         if (err != ESP_OK)
         {
-            s_fail_count++;
-            if (s_fail_count == 1)
-            {
-                ESP_LOGE("Bus_IDF_SPI", "%s failed at call #%lu: %d (%s)",
-                         who, (unsigned long)s_call_count, err, esp_err_to_name(err));
-                signal_init_failure();
-            }
+            ESP_LOGE("Bus_IDF_SPI", "%s failed: %d (%s)", who, err, esp_err_to_name(err));
+            signal_init_failure();
         }
     }
 
@@ -299,21 +204,11 @@ private:
 #endif
     }
 
-    // Was named pack_msb_first() and extracted bytes MSB-first
-    // (out[i] = data >> (8*(bytelen-1-i))), on the assumption that
-    // LovyanGFX hands this a plain big-endian-intended numeric value.
-    // The hex-dump diagnostics proved that wrong on real hardware:
-    // CASET's data came out as "81 00 02 00" on the wire when the
-    // panel needs "00 02 00 81" (confirmed against raw_spi_test's
-    // known-good byte sequence) -- the *exact* byte-reversal, for both
-    // the 32-bit CASET/RASET window values and the 16-bit fill color.
     // LovyanGFX pre-packs multi-byte `data` expecting the bus to shift
     // it out LSB-of-the-value-first (matching how its own Bus_SPI
-    // hardware path consumes a packed word from a FIFO register), not
-    // MSB-first. This was the actual cause of the "first fill lands,
-    // everything after doesn't" symptom chased for several rounds:
-    // CASET/RASET being sent backwards put every fill's address window
-    // somewhere invalid, not just the first one.
+    // hardware path consumes a packed word from a FIFO register) -- not
+    // MSB-first, despite data looking like a plain big-endian numeric
+    // value at a glance.
     static void pack_lsb_first(uint32_t data, uint_fast8_t bit_length, uint8_t* out)
     {
         uint32_t bytelen = (bit_length + 7) >> 3;
