@@ -5,7 +5,12 @@ static const char* NVS_NS = "ap_config";
 
 void config_load(APConfig &cfg) {
     Preferences prefs;
-    prefs.begin(NVS_NS, true); // read-only
+    // Read-write, not read-only: on first boot (no config saved yet) this
+    // namespace doesn't exist, and begin(ns, true) can't create a missing
+    // namespace in read-only mode -- it fails with NOT_FOUND. Opening
+    // read-write lets it create the (empty) namespace instead, and every
+    // getX() below already falls back to its given default either way.
+    prefs.begin(NVS_NS, false);
 
     cfg.ssid       = prefs.getString("ssid", "PM_Travel");
     cfg.password   = prefs.getString("password", "Adames007");
