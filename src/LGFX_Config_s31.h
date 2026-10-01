@@ -69,10 +69,18 @@ public:
             auto cfg = _bus.config();
             cfg.spi_host   = SPI2_HOST;   // FSPI / GPSPI2
             cfg.spi_mode   = 0;
-            cfg.freq_write = 10000000;    // matches the working raw spi_master test's
-                                           // clock_speed_hz — this wiring may not have
-                                           // the signal integrity for the ST7735's full
-                                           // rated speed (was 27MHz, panel never responded)
+            cfg.freq_write = 1000000;     // dropped from 10MHz (the raw spi_master test's
+                                           // clock_speed_hz) to 1MHz as a signal-integrity
+                                           // experiment: display_test and raw_spi_test
+                                           // behave differently on identical wiring at the
+                                           // same moment -- bus init, GPIO dual-bank
+                                           // handling, and pinMode()'s register lookups
+                                           // have all been individually verified correct,
+                                           // so a marginal/borderline signal on the jumper
+                                           // wires (sensitive to subtle timing differences
+                                           // between the two binaries) is the remaining
+                                           // plausible explanation. Raise this back toward
+                                           // 10MHz once/if this is confirmed to fix it.
             cfg.pin_sclk   = 35;
             cfg.pin_mosi   = 37;
             cfg.pin_miso   = -1;
