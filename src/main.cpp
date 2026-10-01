@@ -144,6 +144,12 @@ void loop() {
         else if (!has_uplink && g_prev_has_uplink) nat_disable();
         g_prev_has_uplink = has_uplink;
 
+        // Captive-portal DNS hijack must come down once a real uplink is
+        // online -- left hijacking, it answers every WiFi client's DNS
+        // query with this device's own IP forever, breaking internet
+        // access even with NAT working.
+        webserver_set_captive_portal(!has_uplink);
+
         // WiFi clients need a real DNS server to resolve names through the
         // uplink; otherwise the AP advertises itself and nothing answers.
         if (has_uplink) {

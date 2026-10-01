@@ -10,6 +10,7 @@ static const char *TAG = "Web";
 
 static WiFiServer http_server(80);
 static DNSServer dns_server;
+static bool dns_hijack_on = false;
 static APConfig *current_cfg = nullptr;
 
 // Standard captive-portal DNS port; iOS/Android/Windows all query this
@@ -412,7 +413,16 @@ void webserver_init(APConfig &cfg) {
     // captive portal is present and auto-opens its built-in browser
     // straight to this page, without the user needing to find the IP
     // themselves.
-    dns_server.start(DNS_PORT, "*", WiFi.softAPIP());
+    //
+    // Only while there's no real uplink -- main.cpp disables this via
+    // webserver_set_captive_portal() the moment NAT comes up. Left on
+    // permanently, it answers EVERY WiFi client's DNS query with this
+    // device's own IP forever, which breaks all real internet access
+    // even once NAT is working (confirmed on real hardware: uplink
+    // configured and presumably connected, phone still had "no
+    // internet" because every domain it looked up resolved back to
+    // this device).
+    webserver_set_captive_portal(true);
 
     // Not Serial: this env has no Arduino CDC console (native USB is
     // dedicated to NCM tethering, see platformio.ini) -- an unattached
@@ -421,8 +431,18 @@ void webserver_init(APConfig &cfg) {
     ESP_LOGI(TAG, "Config server started on port 80, captive DNS on port 53");
 }
 
+void webserver_set_captive_portal(bool enabled) {
+    if (enabled == dns_hijack_on) return;
+    dns_hijack_on = enabled;
+    if (enabled) {
+        dns_server.start(DNS_PORT, "*", WiFi.softAPIP());
+    } else {
+        dns_server.stop();
+    }
+}
+
 void webserver_handle() {
-    dns_server.processNextRequest();
+    if (dns_hijack_on) dns_server.processNextRequest();
 
     WiFiClient client = http_server.accept();
     if (!client) return;
