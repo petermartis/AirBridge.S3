@@ -72,7 +72,19 @@ struct Bus_IDF_SPI : public lgfx::Bus_NULL
         buscfg.sclk_io_num = _cfg.pin_sclk;
         buscfg.quadwp_io_num = -1;
         buscfg.quadhd_io_num = -1;
-        buscfg.max_transfer_sz = 4096;
+        // Matches raw_spi_test's buscfg.max_transfer_sz (128*2+8 = 264)
+        // exactly: after fixing the byte-order bug in pack_lsb_first()
+        // and confirming byte-for-byte correct CASET/RASET/RAMWR output
+        // via hex dump, and after bus_idf_spi_test proved the panel
+        // stays blank white even calling Bus_IDF_SPI directly (bypassing
+        // LovyanGFX's Panel_LCD/LGFX_Device entirely), this was the one
+        // remaining field in spi_bus_config_t/spi_device_interface_
+        // config_t that differed at all from the proven-working raw
+        // test's setup -- every other field (pins, clock, mode, CS,
+        // queue_size) already matched exactly. Largest actual transfer
+        // this bus ever makes (writeBytes' 4092-byte chunk cap) is
+        // bigger than this, so that cap is lowered too, below.
+        buscfg.max_transfer_sz = 264;
         esp_err_t err = spi_bus_initialize((spi_host_device_t)_cfg.spi_host, &buscfg, SPI_DMA_CH_AUTO);
         if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
             // Not silently swallowed: Panel_Device::init() (LovyanGFX)
@@ -190,7 +202,10 @@ struct Bus_IDF_SPI : public lgfx::Bus_NULL
         gpio_set_level((gpio_num_t)_cfg.pin_dc, dc ? 1 : 0);
         while (length > 0)
         {
-            uint32_t n = length > 4092 ? 4092 : length;
+            // Capped to fit under buscfg.max_transfer_sz (264, see
+            // init() above) -- was 4092, larger than the bus now
+            // allows a single transaction to be.
+            uint32_t n = length > 256 ? 256 : length;
             spi_transaction_t t = {};
             t.length = n * 8;
             t.tx_buffer = data;
