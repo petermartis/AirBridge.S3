@@ -437,6 +437,13 @@ void webserver_handle() {
     if (sp1 > 0 && sp2 > sp1) {
         path = request_line.substring(sp1 + 1, sp2);
     }
+    // ESP_LOGE, not ESP_LOGI: this board's log level filters INFO
+    // entirely. Logs every request's method+path unconditionally, to
+    // settle whether /scan is reaching this routing code at all --
+    // the browser shows "Scan timed out" (implying repeated successful
+    // {"scanning":true} responses) but wifi_scan_start()'s own ESP_LOGE
+    // line never appeared on the last two hardware tests.
+    ESP_LOGE(TAG, "request: %s %s", is_post ? "POST" : "GET", path.c_str());
 
     // Read headers, find Content-Length. Headers can arrive in several TCP
     // segments, so read until the blank line rather than until available() == 0.
