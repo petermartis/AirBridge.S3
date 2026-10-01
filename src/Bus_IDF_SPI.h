@@ -136,7 +136,7 @@ struct Bus_IDF_SPI : public lgfx::Bus_NULL
     {
         gpio_set_level((gpio_num_t)_cfg.pin_dc, 1);
         uint8_t buf[4];
-        pack_msb_first(data, bit_length, buf);
+        pack_lsb_first(data, bit_length, buf);
         log_data(buf, (bit_length + 7) >> 3);
         spi_transaction_t t = {};
         t.length = bit_length;
@@ -149,7 +149,7 @@ struct Bus_IDF_SPI : public lgfx::Bus_NULL
         gpio_set_level((gpio_num_t)_cfg.pin_dc, 1);
         uint32_t bytelen = (bit_length + 7) >> 3;
         uint8_t unit[4];
-        pack_msb_first(data, bit_length, unit);
+        pack_lsb_first(data, bit_length, unit);
         log_repeat(unit, bytelen, count);
 
         static constexpr uint32_t CHUNK_UNITS = 128;
@@ -284,12 +284,27 @@ private:
 #endif
     }
 
-    static void pack_msb_first(uint32_t data, uint_fast8_t bit_length, uint8_t* out)
+    // Was named pack_msb_first() and extracted bytes MSB-first
+    // (out[i] = data >> (8*(bytelen-1-i))), on the assumption that
+    // LovyanGFX hands this a plain big-endian-intended numeric value.
+    // The hex-dump diagnostics proved that wrong on real hardware:
+    // CASET's data came out as "81 00 02 00" on the wire when the
+    // panel needs "00 02 00 81" (confirmed against raw_spi_test's
+    // known-good byte sequence) -- the *exact* byte-reversal, for both
+    // the 32-bit CASET/RASET window values and the 16-bit fill color.
+    // LovyanGFX pre-packs multi-byte `data` expecting the bus to shift
+    // it out LSB-of-the-value-first (matching how its own Bus_SPI
+    // hardware path consumes a packed word from a FIFO register), not
+    // MSB-first. This was the actual cause of the "first fill lands,
+    // everything after doesn't" symptom chased for several rounds:
+    // CASET/RASET being sent backwards put every fill's address window
+    // somewhere invalid, not just the first one.
+    static void pack_lsb_first(uint32_t data, uint_fast8_t bit_length, uint8_t* out)
     {
         uint32_t bytelen = (bit_length + 7) >> 3;
         for (uint32_t i = 0; i < bytelen; i++)
         {
-            out[i] = (uint8_t)(data >> (8 * (bytelen - 1 - i)));
+            out[i] = (uint8_t)(data >> (8 * i));
         }
     }
 
