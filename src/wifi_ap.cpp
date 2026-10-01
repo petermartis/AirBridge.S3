@@ -1,4 +1,5 @@
 #include "wifi_ap.h"
+#include "display.h"
 #include <WiFi.h>
 #include <esp_wifi.h>
 #include <esp_netif.h>
@@ -221,22 +222,35 @@ uint32_t wifi_sta_dns_addr() {
 
 void wifi_scan_start() {
     if (WiFi.scanComplete() == WIFI_SCAN_RUNNING) return;
-    // ESP_LOGE, not ESP_LOGI: this board's configured log level filters
-    // INFO entirely (see main.cpp's BOOT_STEP) -- capturing and logging
-    // scanNetworks()'s actual return value (WIFI_SCAN_RUNNING on success,
-    // WIFI_SCAN_FAILED if esp_wifi_scan_start() itself rejected the
-    // request) tells apart "scan never started" from "scan started but
-    // its done-event never arrived", which silently discarding it as
-    // before could not.
+    // Temporary bring-up diagnostic: this build has no working serial
+    // console (CONFIG_ESP_CONSOLE_SECONDARY_NONE=y, see
+    // sdkconfig.s31.defaults -- re-enabling USB-Serial/JTAG was tried
+    // and produced no visible console on real S31 hardware), so
+    // ESP_LOGx output here goes nowhere. Using the TFT instead, as
+    // intended by that same sdkconfig comment ("use LCD for debug").
     int16_t r = WiFi.scanNetworks(true, false, false, 300);
-    ESP_LOGE(TAG, "scanNetworks() returned %d (mode=%d)", r, (int)WiFi.getMode());
+    char buf[32];
+    snprintf(buf, sizeof(buf), "scan start r=%d m=%d", r, (int)WiFi.getMode());
+    display_debug_step(buf);
 }
 
 String wifi_scan_result() {
     int16_t n = WiFi.scanComplete();
-    if (n == WIFI_SCAN_RUNNING) return "{\"scanning\":true}";
+    char buf[32];
+    if (n == WIFI_SCAN_RUNNING) {
+        // Redrawn on every poll (the browser polls /scan every 500ms
+        // while scanning), so this stays on screen for as long as the
+        // scan keeps reporting RUNNING -- easily enough time to read it,
+        // unlike a one-shot message that the normal 2s UI cycle would
+        // quickly overwrite.
+        display_debug_step("scan RUNNING...");
+        return "{\"scanning\":true}";
+    }
     if (n == WIFI_SCAN_FAILED) {
-        ESP_LOGE(TAG, "scanComplete() reports WIFI_SCAN_FAILED");
+        display_debug_step("scan FAILED");
+    } else {
+        snprintf(buf, sizeof(buf), "scan done n=%d", n);
+        display_debug_step(buf);
     }
 
     String json = "{\"scanning\":false,\"networks\":[";
@@ -257,7 +271,6 @@ String wifi_scan_result() {
     json += "]}";
     if (n >= 0) {
         WiFi.scanDelete();
-        ESP_LOGE(TAG, "Scan found %d networks", n);
     }
     return json;
 }
