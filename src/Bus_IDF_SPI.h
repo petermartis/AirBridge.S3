@@ -43,6 +43,14 @@ struct Bus_IDF_SPI : public lgfx::Bus_NULL
     const config_t& config(void) const { return _cfg; }
     void config(const config_t& cfg) { _cfg = cfg; }
 
+    // Exposed so a caller (see display_test) can print these after a
+    // known sequence of draw calls and tell, independent of what's
+    // visible on the panel, whether the driver itself ever reported a
+    // failed transmit -- see the long comment on check() below for why
+    // that's the open question right now.
+    static uint32_t transmitCount(void) { return s_call_count; }
+    static uint32_t transmitFailCount(void) { return s_fail_count; }
+
     lgfx::bus_type_t busType(void) const override { return lgfx::bus_type_t::bus_spi; }
 
     bool init(void) override
@@ -119,7 +127,7 @@ struct Bus_IDF_SPI : public lgfx::Bus_NULL
         spi_transaction_t t = {};
         t.length = bit_length;
         t.tx_buffer = &cmd;
-        spi_device_transmit(_dev, &t);
+        check(spi_device_transmit(_dev, &t), "writeCommand");
         return true;
     }
 
@@ -131,7 +139,7 @@ struct Bus_IDF_SPI : public lgfx::Bus_NULL
         spi_transaction_t t = {};
         t.length = bit_length;
         t.tx_buffer = buf;
-        spi_device_transmit(_dev, &t);
+        check(spi_device_transmit(_dev, &t), "writeData");
     }
 
     void writeDataRepeat(uint32_t data, uint_fast8_t bit_length, uint32_t count) override
@@ -155,7 +163,7 @@ struct Bus_IDF_SPI : public lgfx::Bus_NULL
             spi_transaction_t t = {};
             t.length = n * bytelen * 8;
             t.tx_buffer = chunk;
-            spi_device_transmit(_dev, &t);
+            check(spi_device_transmit(_dev, &t), "writeDataRepeat");
             count -= n;
         }
     }
@@ -183,13 +191,44 @@ struct Bus_IDF_SPI : public lgfx::Bus_NULL
             spi_transaction_t t = {};
             t.length = n * 8;
             t.tx_buffer = data;
-            spi_device_transmit(_dev, &t);
+            check(spi_device_transmit(_dev, &t), "writeBytes");
             data += n;
             length -= n;
         }
     }
 
 private:
+    // Diagnostic instrumentation: spi_device_transmit()'s return value was
+    // never checked anywhere in this file before -- a failure there would
+    // be completely silent (no hang, no log, nothing visible at all). This
+    // is a real gap given the symptom on real S31 hardware: the first
+    // fillScreen() after init visibly lands (white -> light-blue), but
+    // every later one -- same writeDataRepeat() path, same bus, same
+    // device handle -- produces no further visible change, with every
+    // Serial.println() checkpoint still firing normally (no hang, no
+    // crash). check() logs the *first* failing transmit only (who, which
+    // call number since boot, esp_err_t), via the same ESP_LOGE path
+    // already proven to reach the console, and red-flashes the onboard
+    // LED -- a channel independent of the SPI bus under suspicion --
+    // without flooding the log or changing behavior on success.
+    static inline uint32_t s_call_count = 0;
+    static inline uint32_t s_fail_count = 0;
+
+    static void check(esp_err_t err, const char* who)
+    {
+        s_call_count++;
+        if (err != ESP_OK)
+        {
+            s_fail_count++;
+            if (s_fail_count == 1)
+            {
+                ESP_LOGE("Bus_IDF_SPI", "%s failed at call #%lu: %d (%s)",
+                         who, (unsigned long)s_call_count, err, esp_err_to_name(err));
+                signal_init_failure();
+            }
+        }
+    }
+
     // Latches the onboard RGB LED solid red -- see the comment at the
     // call site. #ifdef-guarded since RGB_BUILTIN is only defined on
     // boards that actually have one; a board without it just skips this
