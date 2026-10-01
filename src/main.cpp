@@ -24,17 +24,27 @@
 #include "nat.h"
 
 // Temporary bring-up diagnostic: bisecting a silent hang somewhere in
-// setup() on real S31 hardware (no crash, no further output after
-// config_load()'s Preferences warnings) by checkpointing each major
-// init call. Draws to the physical screen (not just ESP_LOGI) because
-// the USB console has proven unreliable during this early boot window
-// -- output printed before native-USB enumeration finishes can be
-// silently dropped, which is suspected to be why no checkpoint has
-// shown up there yet even though the display itself is confirmed
-// working (display_test). The screen isn't subject to that at all.
-// Remove once the real hang/crash is found and fixed.
+// setup() on real S31 hardware. Real root cause of why no checkpoint
+// was ever showing up in the console, found on real hardware: this
+// board's configured log level filters out ESP_LOGI entirely --
+// Arduino's own Preferences.cpp errors were only ever visible because
+// they go through a different, always-on logging path (Arduino's
+// log_e()), not because anything of ours was failing to run. Fixed by
+// using ESP_LOGE here instead, which Preferences' own errors already
+// proved gets through. Also still drawing to the screen and setting
+// the onboard RGB LED to a distinct color per step, in case the
+// console turns out to still be lossy for an unrelated reason -- the
+// LED doesn't depend on SPI2_HOST at all, so it stays trustworthy even
+// if the bus itself turns out to be the thing that's broken. Remove
+// once the real hang/crash is found and fixed.
 static const char *TAG_BOOT = "boot";
-#define BOOT_STEP(msg) do { ESP_LOGI(TAG_BOOT, msg); display_debug_step(msg); } while (0)
+#define BOOT_STEP(msg) do { ESP_LOGE(TAG_BOOT, msg); display_debug_step(msg); } while (0)
+
+#ifdef RGB_BUILTIN
+#define LED_STEP(r, g, b) rgbLedWrite(RGB_BUILTIN, r, g, b)
+#else
+#define LED_STEP(r, g, b) do {} while (0)
+#endif
 
 static APConfig g_cfg;
 static ClientInfo g_clients[10];
@@ -48,16 +58,31 @@ static const unsigned long DISPLAY_INTERVAL = 2000;
 static unsigned long g_last_display = 0;
 
 void setup() {
+    // Self-test, before anything else at all: proves the LED mechanism
+    // itself works on this exact board, independent of every subsystem
+    // below. If this never blinks, the LED checkpoints after it can't
+    // be trusted either -- but if even this doesn't show, that's its
+    // own answer.
+    LED_STEP(255, 255, 255);
+    delay(200);
+    LED_STEP(0, 0, 0);
+    delay(200);
+    LED_STEP(255, 255, 255);
+    delay(200);
+    LED_STEP(0, 0, 0);
+
     // 0. Check reset reason (helps diagnose USB crash)
     esp_reset_reason_t rst = esp_reset_reason();
     // Will display after screen init
 
     // 1. Display init (LovyanGFX handles backlight on GPIO 7)
     // (not using BOOT_STEP here -- the screen isn't ready to draw to
-    // until display_init() itself has run; ESP_LOGI only for this one)
-    ESP_LOGI(TAG_BOOT, "display_init...");
+    // until display_init() itself has run)
+    ESP_LOGE(TAG_BOOT, "display_init...");
+    LED_STEP(0, 0, 255);  // blue
     display_init();
     BOOT_STEP("display_init OK");
+    LED_STEP(0, 255, 0);  // green
     if (rst != ESP_RST_POWERON && rst != ESP_RST_DEEPSLEEP) {
         // Show reset reason briefly — helps diagnose crashes
         // 3=SW_RESET, 4=PANIC, 5=INT_WDT, 6=TASK_WDT, 9=BROWNOUT
@@ -66,12 +91,15 @@ void setup() {
     }
     display_boot_screen();
     BOOT_STEP("display_boot_screen OK");
+    LED_STEP(0, 255, 255);  // cyan
 
     // 2. Config + WiFi AP (uses AP+STA mode if repeater is on)
     config_load(g_cfg);
     BOOT_STEP("config_load OK");
+    LED_STEP(255, 255, 0);  // yellow
     wifi_ap_init(g_cfg);
     BOOT_STEP("wifi_ap_init OK");
+    LED_STEP(255, 0, 255);  // magenta
 
     // 3. Start STA uplink if repeater is enabled
     if (g_cfg.repeater_on) {
@@ -82,8 +110,10 @@ void setup() {
     // 4. USB NCM + web server
     usb_net_init();
     BOOT_STEP("usb_net_init OK");
+    LED_STEP(255, 128, 0);  // orange
     webserver_init(g_cfg);
     BOOT_STEP("webserver_init OK");
+    LED_STEP(128, 0, 255);  // purple
 
     // 5. Initial display update
     delay(500);
@@ -92,6 +122,7 @@ void setup() {
                    wifi_sta_is_connected(), wifi_sta_rssi(),
                    g_clients, g_client_count);
     BOOT_STEP("setup() complete");
+    LED_STEP(0, 0, 0);  // off: setup() reached the end successfully
 }
 
 void loop() {
