@@ -220,6 +220,13 @@ uint32_t wifi_sta_dns_addr() {
     return dns.ip.u_addr.ip4.addr;
 }
 
+// Set once by wifi_scan_start() and folded into every subsequent
+// "RUNNING" redraw in wifi_scan_result() -- a one-shot message for
+// this was shown too briefly (one ~500ms poll interval) to read before
+// the next poll's "RUNNING" redraw replaced it.
+static int16_t s_scan_start_r = 0;
+static int s_scan_start_mode = 0;
+
 void wifi_scan_start() {
     if (WiFi.scanComplete() == WIFI_SCAN_RUNNING) return;
     // Temporary bring-up diagnostic: this build has no working serial
@@ -228,10 +235,8 @@ void wifi_scan_start() {
     // and produced no visible console on real S31 hardware), so
     // ESP_LOGx output here goes nowhere. Using the TFT instead, as
     // intended by that same sdkconfig comment ("use LCD for debug").
-    int16_t r = WiFi.scanNetworks(true, false, false, 300);
-    char buf[32];
-    snprintf(buf, sizeof(buf), "scan start r=%d m=%d", r, (int)WiFi.getMode());
-    display_debug_step(buf);
+    s_scan_start_r = WiFi.scanNetworks(true, false, false, 300);
+    s_scan_start_mode = (int)WiFi.getMode();
 }
 
 String wifi_scan_result() {
@@ -243,7 +248,8 @@ String wifi_scan_result() {
         // scan keeps reporting RUNNING -- easily enough time to read it,
         // unlike a one-shot message that the normal 2s UI cycle would
         // quickly overwrite.
-        display_debug_step("scan RUNNING...");
+        snprintf(buf, sizeof(buf), "RUNNING r=%d m=%d", s_scan_start_r, s_scan_start_mode);
+        display_debug_step(buf);
         return "{\"scanning\":true}";
     }
     if (n == WIFI_SCAN_FAILED) {
