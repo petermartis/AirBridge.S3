@@ -247,6 +247,15 @@ static void send_response(WiFiClient &client, int code, const String &content_ty
     client.printf("HTTP/1.1 %d %s\r\n", code, reason);
     client.printf("Content-Type: %s\r\n", content_type.c_str());
     client.printf("Content-Length: %u\r\n", (unsigned)body.length());
+    // No caching headers were sent before this, on any response --
+    // including /scan's {"scanning":true} polling responses. A browser
+    // is free to heuristically cache and reuse a GET response with no
+    // explicit cache directive, which would make repeated identical
+    // GET /scan polls resolve from a stale local copy instead of ever
+    // reaching the device again, matching a reported "Scan timed out"
+    // (implying it kept seeing {"scanning":true}) with literally zero
+    // corresponding server-side request log.
+    client.print("Cache-Control: no-store\r\n");
     client.print("Connection: close\r\n\r\n");
     client.print(body);
 }
