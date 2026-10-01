@@ -23,6 +23,17 @@
 #include "usb_net.h"
 #include "nat.h"
 
+// Temporary bring-up diagnostic: bisecting a silent hang somewhere in
+// setup() on real S31 hardware (no crash, no further output after
+// config_load()'s Preferences warnings) by checkpointing each major
+// init call. Uses ESP_LOGI, not Serial -- this env has no Arduino CDC
+// console (native USB is dedicated to NCM tethering; see platformio.ini),
+// so Serial writes may not go anywhere, or worse, block forever once
+// their buffer fills with nothing ever draining it. Remove once the
+// hang is found and fixed.
+static const char *TAG_BOOT = "boot";
+#define BOOT_STEP(msg) ESP_LOGI(TAG_BOOT, msg)
+
 static APConfig g_cfg;
 static ClientInfo g_clients[10];
 static int g_client_count = 0;
@@ -40,7 +51,9 @@ void setup() {
     // Will display after screen init
 
     // 1. Display init (LovyanGFX handles backlight on GPIO 7)
+    BOOT_STEP("display_init...");
     display_init();
+    BOOT_STEP("display_init OK");
     if (rst != ESP_RST_POWERON && rst != ESP_RST_DEEPSLEEP) {
         // Show reset reason briefly — helps diagnose crashes
         // 3=SW_RESET, 4=PANIC, 5=INT_WDT, 6=TASK_WDT, 9=BROWNOUT
@@ -48,19 +61,25 @@ void setup() {
         delay(2000);
     }
     display_boot_screen();
+    BOOT_STEP("display_boot_screen OK");
 
     // 2. Config + WiFi AP (uses AP+STA mode if repeater is on)
     config_load(g_cfg);
+    BOOT_STEP("config_load OK");
     wifi_ap_init(g_cfg);
+    BOOT_STEP("wifi_ap_init OK");
 
     // 3. Start STA uplink if repeater is enabled
     if (g_cfg.repeater_on) {
         wifi_sta_start(g_cfg.uplink_ssid, g_cfg.uplink_pass);
+        BOOT_STEP("wifi_sta_start OK");
     }
 
     // 4. USB NCM + web server
     usb_net_init();
+    BOOT_STEP("usb_net_init OK");
     webserver_init(g_cfg);
+    BOOT_STEP("webserver_init OK");
 
     // 5. Initial display update
     delay(500);
@@ -68,6 +87,7 @@ void setup() {
     display_update(g_cfg, usb_net_is_online(),
                    wifi_sta_is_connected(), wifi_sta_rssi(),
                    g_clients, g_client_count);
+    BOOT_STEP("setup() complete");
 }
 
 void loop() {

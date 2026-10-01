@@ -18,12 +18,20 @@ void wifi_ap_init(const APConfig &cfg) {
     IPAddress gateway(cfg.ip[0], cfg.ip[1], cfg.ip[2], cfg.ip[3]);
     IPAddress subnet(255, 255, 255, 0);
 
+    // Temporary bring-up diagnostic (see main.cpp's BOOT_STEP) --
+    // bisecting a silent hang on real S31 hardware that stops right
+    // around here with no further output. Remove once found and fixed.
+    ESP_LOGI(TAG, "WiFi.mode...");
     // Use AP+STA if repeater is enabled, otherwise AP only
     WiFi.mode(cfg.repeater_on ? WIFI_AP_STA : WIFI_AP);
+    ESP_LOGI(TAG, "WiFi.mode OK");
     WiFi.softAPConfig(local_ip, gateway, subnet);
+    ESP_LOGI(TAG, "softAPConfig OK");
     WiFi.softAP(cfg.ssid.c_str(), cfg.password.c_str(), 1, 0, 10);
+    ESP_LOGI(TAG, "softAP OK");
 
     wifi_ap_apply_dhcp_range(cfg);
+    ESP_LOGI(TAG, "apply_dhcp_range OK");
 
     ESP_LOGI(TAG, "AP started: SSID=%s IP=%s mode=%s",
         cfg.ssid.c_str(),

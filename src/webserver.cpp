@@ -3,6 +3,9 @@
 #include "usb_net.h"
 #include <WiFi.h>
 #include <WiFiClient.h>
+#include <esp_log.h>
+
+static const char *TAG = "Web";
 
 static WiFiServer http_server(80);
 static APConfig *current_cfg = nullptr;
@@ -380,7 +383,11 @@ static void handle_save(WiFiClient &client, const String &body) {
 void webserver_init(APConfig &cfg) {
     current_cfg = &cfg;
     http_server.begin();
-    Serial.println("[Web] Config server started on port 80");
+    // Not Serial: this env has no Arduino CDC console (native USB is
+    // dedicated to NCM tethering, see platformio.ini) -- an unattached
+    // Serial write can block forever once its buffer fills with nothing
+    // ever draining it.
+    ESP_LOGI(TAG, "Config server started on port 80");
 }
 
 void webserver_handle() {
