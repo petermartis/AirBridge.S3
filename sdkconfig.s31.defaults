@@ -38,14 +38,14 @@ CONFIG_ESP_HTTPS_SERVER_ENABLE=n
 CONFIG_ARDUINO_USB_CDC_ON_BOOT=0
 CONFIG_ARDUINO_USB_MODE=0
 
-# --- Disable USB-Serial/JTAG console ---
-# On the S3 this is required because USB-Serial/JTAG shares GPIO19/20 with
-# USB OTG. Early S31 documentation describes USB-Serial/JTAG as using a
-# dedicated PHY/port independent of USB OTG, which — if it holds up on
-# actual hardware — would let this be re-enabled for a real serial console
-# alongside NCM. Left disabled here to match known-working S3 behavior
-# until that's verified on real S31 hardware.
-CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+# --- USB-Serial/JTAG console ---
+# On the S3 this had to stay disabled because USB-Serial/JTAG shares
+# GPIO19/20 with USB OTG. Re-enabling here to actually test the S31's
+# "dedicated PHY/port independent of USB OTG" documentation on real
+# hardware -- NOT yet confirmed. If USB-NCM tethering breaks, or no
+# second serial device appears, revert to
+# CONFIG_ESP_CONSOLE_SECONDARY_NONE=y.
+CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=y
 
 # --- Flash size ---
 CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
