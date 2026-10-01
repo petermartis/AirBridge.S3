@@ -22,9 +22,9 @@
 //   RESET -> GPIO43
 //
 // invert/rgb_order below are set to match that same working test's init
-// sequence (it sends INVON / 0x21, and a MADCTL of 0x00 with no BGR bit
+// sequence (it sends INVOFF / 0x20, and a MADCTL of 0x00 with no BGR bit
 // set) rather than the ST7735 defaults, since it's proven to actually
-// work on this panel.
+// work on this panel with correct (non-inverted) colors.
 //
 // BUS — using Bus_IDF_SPI (backed directly by ESP-IDF's spi_master
 // driver), not lgfx::Bus_SPI. lgfx::Bus_SPI produced no visible result
@@ -69,18 +69,14 @@ public:
             auto cfg = _bus.config();
             cfg.spi_host   = SPI2_HOST;   // FSPI / GPSPI2
             cfg.spi_mode   = 0;
-            cfg.freq_write = 1000000;     // dropped from 10MHz (the raw spi_master test's
-                                           // clock_speed_hz) to 1MHz as a signal-integrity
-                                           // experiment: display_test and raw_spi_test
-                                           // behave differently on identical wiring at the
-                                           // same moment -- bus init, GPIO dual-bank
-                                           // handling, and pinMode()'s register lookups
-                                           // have all been individually verified correct,
-                                           // so a marginal/borderline signal on the jumper
-                                           // wires (sensitive to subtle timing differences
-                                           // between the two binaries) is the remaining
-                                           // plausible explanation. Raise this back toward
-                                           // 10MHz once/if this is confirmed to fix it.
+            cfg.freq_write = 10000000;    // matches the raw spi_master test's
+                                           // clock_speed_hz. A 1MHz signal-integrity
+                                           // experiment (on both this bus and the raw
+                                           // test directly) had zero effect on the
+                                           // symptoms chased earlier, ruling out clock
+                                           // speed -- see Panel_ST7735_Minimal.h and
+                                           // the invert setting below for what the
+                                           // actual explanation turned out to be.
             cfg.pin_sclk   = 35;
             cfg.pin_mosi   = 37;
             cfg.pin_miso   = -1;
@@ -103,7 +99,9 @@ public:
             cfg.offset_x     = 2;   // see calibration note above
             cfg.offset_y     = 1;   // see calibration note above
             cfg.offset_rotation = 0;
-            cfg.invert       = true;   // matches the working test's INVON (0x21)
+            cfg.invert       = false;  // matches the working test's INVOFF (0x20) --
+                                       // see Panel_ST7735_Minimal.h for why this
+                                       // isn't INVON
             cfg.rgb_order    = true;   // matches the working test's MADCTL=0x00 (no BGR bit)
             cfg.dlen_16bit   = false;
             cfg.bus_shared   = false;
