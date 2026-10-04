@@ -54,13 +54,26 @@ endif()
 # defaults instead of sdkconfig.s31.defaults' values -- something in
 # this hybrid build's config generation doesn't apply board_build.
 # sdkconfig_defaults for these keys the way it does for most others.
+#
+# 16384, not 65535: a first attempt at the max value caused boot/
+# reboot loops on real hardware (~128KB of internal SRAM per TCP
+# connection on a 327KB-total chip -- see sdkconfig.s31.defaults).
 set(_sdkconfig_s31 "${CMAKE_CURRENT_SOURCE_DIR}/sdkconfig.esp32s31")
 if(EXISTS ${_sdkconfig_s31})
     file(READ ${_sdkconfig_s31} _sdk_content_s31)
-    string(FIND "${_sdk_content_s31}" "CONFIG_LWIP_TCP_WND_DEFAULT=65535" _pos_s31)
+    string(FIND "${_sdk_content_s31}" "CONFIG_LWIP_TCP_WND_DEFAULT=16384" _pos_s31)
     if(_pos_s31 EQUAL -1)
         file(APPEND ${_sdkconfig_s31}
-            "\nCONFIG_LWIP_TCP_SND_BUF_DEFAULT=65535\nCONFIG_LWIP_TCP_WND_DEFAULT=65535\nCONFIG_LWIP_TCP_RECVMBOX_SIZE=48\nCONFIG_LWIP_TCPIP_RECVMBOX_SIZE=64\n")
+            "\nCONFIG_LWIP_TCP_SND_BUF_DEFAULT=16384\nCONFIG_LWIP_TCP_WND_DEFAULT=16384\nCONFIG_LWIP_TCP_RECVMBOX_SIZE=16\n")
         message(STATUS "Re-appended TCP buffer tuning to sdkconfig.esp32s31")
+    endif()
+    # WiFi AMPDU block-ack window -- see sdkconfig.s31.defaults. A
+    # bounded, fixed-size cost per unit, not a per-connection
+    # multiplier like the TCP values above, so a safe independent raise.
+    string(FIND "${_sdk_content_s31}" "CONFIG_ESP_WIFI_RX_BA_WIN=12" _pos_ba)
+    if(_pos_ba EQUAL -1)
+        file(APPEND ${_sdkconfig_s31}
+            "\nCONFIG_ESP_WIFI_TX_BA_WIN=12\nCONFIG_ESP_WIFI_RX_BA_WIN=12\n")
+        message(STATUS "Re-appended WiFi BA window tuning to sdkconfig.esp32s31")
     endif()
 endif()
