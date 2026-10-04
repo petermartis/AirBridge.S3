@@ -97,6 +97,12 @@ void setup() {
     // 2. Config + WiFi AP (uses AP+STA mode if repeater is on)
     config_load(g_cfg);
     BOOT_STEP("config_load OK");
+    // Diagnostic: pin down the AP+STA concurrent-bringup crash exactly --
+    // need to know repeater_on actually reads true here, and whether we
+    // even reach WiFi.begin() before the device dies, not just that it
+    // dies "around here" per the BOOT_STEP before/after this block.
+    log_e("cfg: repeater_on=%d uplink_ssid_len=%d tx_power=%d",
+          g_cfg.repeater_on, g_cfg.uplink_ssid.length(), g_cfg.tx_power_dbm);
     LED_STEP(255, 255, 0);  // yellow
     wifi_ap_init(g_cfg);
     BOOT_STEP("wifi_ap_init OK");
@@ -104,8 +110,11 @@ void setup() {
 
     // 3. Start STA uplink if repeater is enabled
     if (g_cfg.repeater_on) {
+        log_e("about to call wifi_sta_start()");
         wifi_sta_start(g_cfg.uplink_ssid, g_cfg.uplink_pass);
         BOOT_STEP("wifi_sta_start OK");
+    } else {
+        log_e("repeater_on is false, skipping wifi_sta_start()");
     }
 
     // 4. USB NCM + web server

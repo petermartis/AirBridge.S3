@@ -238,11 +238,16 @@ int wifi_ap_get_clients(ClientInfo *out, int max_clients) {
 
 void wifi_sta_start(const String &ssid, const String &pass) {
     if (ssid.length() == 0) {
-        ESP_LOGW(TAG, "STA start skipped: no uplink SSID configured");
+        log_e("STA start skipped: no uplink SSID configured");
         return;
     }
-    ESP_LOGI(TAG, "STA connecting to: %s", ssid.c_str());
+    // log_e(), not ESP_LOGI -- see wifi_apply_bandwidth()'s comment above.
+    // Diagnostic for the AP+STA concurrent-bringup crash: pin down
+    // whether WiFi.begin() is ever actually entered before the device
+    // dies, vs dying somewhere earlier that looked like "inside here".
+    log_e("STA: calling WiFi.begin(), ssid_len=%d", ssid.length());
     WiFi.begin(ssid.c_str(), pass.c_str());
+    log_e("STA: WiFi.begin() returned");
 }
 
 bool wifi_sta_is_connected() {
