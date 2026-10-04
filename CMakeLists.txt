@@ -67,13 +67,18 @@ if(EXISTS ${_sdkconfig_s31})
             "\nCONFIG_LWIP_TCP_SND_BUF_DEFAULT=16384\nCONFIG_LWIP_TCP_WND_DEFAULT=16384\nCONFIG_LWIP_TCP_RECVMBOX_SIZE=16\n")
         message(STATUS "Re-appended TCP buffer tuning to sdkconfig.esp32s31")
     endif()
-    # WiFi AMPDU block-ack window -- see sdkconfig.s31.defaults. A
-    # bounded, fixed-size cost per unit, not a per-connection
-    # multiplier like the TCP values above, so a safe independent raise.
-    string(FIND "${_sdk_content_s31}" "CONFIG_ESP_WIFI_RX_BA_WIN=12" _pos_ba)
+    # WiFi AMPDU block-ack window -- explicit revert to stock default
+    # (6). Raising this to 12 (see git history / sdkconfig.s31.defaults)
+    # caused a 100%-reproducible crash: boot got to exactly
+    # "wifi_ap_init OK" every time and died before "wifi_sta_start OK"
+    # ever printed, right where WiFi.begin() starts STA association.
+    # Must be explicitly re-appended at 6, not just removed from this
+    # script, or an already-appended "=12" from a previous build stays
+    # the winning (last) occurrence forever.
+    string(FIND "${_sdk_content_s31}" "CONFIG_ESP_WIFI_RX_BA_WIN=6" _pos_ba)
     if(_pos_ba EQUAL -1)
         file(APPEND ${_sdkconfig_s31}
-            "\nCONFIG_ESP_WIFI_TX_BA_WIN=12\nCONFIG_ESP_WIFI_RX_BA_WIN=12\n")
-        message(STATUS "Re-appended WiFi BA window tuning to sdkconfig.esp32s31")
+            "\nCONFIG_ESP_WIFI_TX_BA_WIN=6\nCONFIG_ESP_WIFI_RX_BA_WIN=6\n")
+        message(STATUS "Re-appended WiFi BA window revert to sdkconfig.esp32s31")
     endif()
 endif()

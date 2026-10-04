@@ -14,6 +14,18 @@ driver, display, HTTP server and NAT state. 16384 (~32KB/connection)
 still raises the window/RTT ceiling well past what the radio itself
 can deliver, without the OOM risk.
 
+CONFIG_ESP_WIFI_TX_BA_WIN/RX_BA_WIN are explicitly reverted to their
+stock default (6) below, not just left out: a prior version of this
+script appended =12 for both (ESP-IDF's own documented throughput
+recommendation), which caused a 100%-reproducible crash -- boot got
+to exactly "wifi_ap_init OK" every time and died before
+"wifi_sta_start OK" ever printed, right where WiFi.begin() starts STA
+association. Since this script's job is appending the LAST (and so
+winning) occurrence of each key, simply removing these from the list
+would leave any already-appended "=12" from a previous build as the
+winning value forever -- these must be explicitly re-asserted at 6 to
+actually override that.
+
 Why this exists: board_build.sdkconfig_defaults isn't being applied
 for these specific keys in this hybrid Arduino+ESP-IDF build -- even
 a full clean (deleting sdkconfig.esp32s31 and the entire .pio/build/
@@ -38,12 +50,10 @@ overrides = [
     "CONFIG_LWIP_TCP_SND_BUF_DEFAULT=16384",
     "CONFIG_LWIP_TCP_WND_DEFAULT=16384",
     "CONFIG_LWIP_TCP_RECVMBOX_SIZE=16",
-    # WiFi AMPDU block-ack window (see sdkconfig.s31.defaults) -- a
-    # bounded, fixed-size cost per unit, not a per-connection
-    # multiplier, so safe to raise independently of the TCP values
-    # above even though both live in this same workaround.
-    "CONFIG_ESP_WIFI_TX_BA_WIN=12",
-    "CONFIG_ESP_WIFI_RX_BA_WIN=12",
+    # Explicit revert to stock default -- see the module docstring for
+    # why this can't just be removed from the list.
+    "CONFIG_ESP_WIFI_TX_BA_WIN=6",
+    "CONFIG_ESP_WIFI_RX_BA_WIN=6",
 ]
 
 if os.path.isfile(sdkconfig_path):
