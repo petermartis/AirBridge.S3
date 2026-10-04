@@ -74,7 +74,23 @@ void setup() {
 
     // 0. Check reset reason (helps diagnose USB crash)
     esp_reset_reason_t rst = esp_reset_reason();
-    // Will display after screen init
+    // Logged immediately via log_e(), not just shown on the TFT after
+    // display_init() -- bisecting a reboot loop whose cause isn't
+    // pinned down yet: previous evidence ruled out the TCP window/BA
+    // window Kconfig values and the HT40/11ax radio config, and the
+    // crash point (immediately as the AP radio commits and starts
+    // transmitting beacons, previously self-healing after ~20 reboots)
+    // is consistent with a brownout (ESP_RST_BROWNOUT=9) if so. Logged
+    // before display_init() so it survives even if the display itself
+    // is what's failing.
+    {
+        static const char *reset_names[] = {
+            "UNKNOWN","POWERON","EXT","SW","PANIC","INT_WDT",
+            "TASK_WDT","WDT","DEEPSLEEP","BROWNOUT","SDIO","USB"
+        };
+        int r = (int)rst;
+        log_e("reset_reason=%d (%s)", r, (r >= 0 && r <= 11) ? reset_names[r] : "?");
+    }
 
     // 1. Display init (LovyanGFX handles backlight on GPIO 7)
     // (not using BOOT_STEP here -- the screen isn't ready to draw to
