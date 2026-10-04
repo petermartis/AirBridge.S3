@@ -36,7 +36,6 @@ void wifi_ap_init(const APConfig &cfg) {
     ESP_LOGE(TAG, "softAP OK");
 
     wifi_apply_tx_power(cfg.tx_power_dbm);
-    wifi_apply_bandwidth();
 
     wifi_ap_apply_dhcp_range(cfg);
     ESP_LOGE(TAG, "apply_dhcp_range OK");
@@ -60,50 +59,36 @@ void wifi_apply_tx_power(int8_t dbm) {
     esp_wifi_set_max_tx_power(dbm * 4);
 }
 
-// Throughput lever deliberately separate from the lwIP TCP window/AMPDU
-// block-ack tuning abandoned in sdkconfig.s31.defaults (see its comment):
-// this is a runtime esp_wifi_* call on the radio's own PHY config, not a
-// Kconfig default that changes netif/lwIP memory allocated during AP+STA
-// bring-up -- the thing that caused the reboot loop. Softap defaults to
-// a 20MHz channel (WIFI_BW20) unless told otherwise; 40MHz (WIFI_BW40,
-// what 802.11 calls HT40/channel bonding) roughly doubles the
-// 802.11n/ax PHY rate ceiling. Also explicitly
-// enables 11AX (WiFi 6) and 11N on both interfaces in case this
-// pioarduino pre-release build's default protocol bitmap doesn't
-// already include them -- cheap to assert, and rules out a silent
-// fallback to legacy 11b/g rates as part of the same throughput gap.
-// Both calls are best-effort: if the driver rejects a setting (e.g. an
-// upstream AP that can't do HT40, so the STA side gets overridden back
-// down once associated), log it and keep going rather than treat it as
-// fatal -- there is nothing in this path that should ever crash.
+// --- 40MHz channel / forced 11ax: ABANDONED ---
+// Tried as a throughput lever separate from the lwIP TCP window/AMPDU
+// block-ack tuning abandoned in sdkconfig.s31.defaults: a runtime
+// esp_wifi_set_bandwidth()/esp_wifi_set_protocols() call on the radio's
+// own PHY config, done after softAP()/WiFi.begin(), specifically to
+// avoid the Kconfig-level netif/lwIP memory path that caused that
+// other reboot loop.
 //
-// Uses log_e(), not ESP_LOGI/ESP_LOGE: this build has no working
-// ESP-IDF console (CONFIG_ESP_CONSOLE_SECONDARY_NONE=y), so ESP_LOGx
-// is silently invisible here -- confirmed again the hard way when a
-// first version of this function logged via ESP_LOGI and a real
-// device's serial output showed setup() and loop() running fine but
-// not one line from here, leaving no way to tell whether these calls
-// even succeeded. log_e() is the one output path confirmed to reach
-// the serial console on this board (see main.cpp's BOOT_STEP).
-void wifi_apply_bandwidth() {
-    esp_err_t err = esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW40);
-    log_e("AP bandwidth HT40: %s", esp_err_to_name(err));
-
-    wifi_protocols_t ap_proto = {};
-    ap_proto.ghz_2g = WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AX;
-    err = esp_wifi_set_protocols(WIFI_IF_AP, &ap_proto);
-    log_e("AP protocol 11b/g/n/ax: %s", esp_err_to_name(err));
-}
-
-void wifi_apply_sta_bandwidth() {
-    esp_err_t err = esp_wifi_set_bandwidth(WIFI_IF_STA, WIFI_BW40);
-    log_e("STA bandwidth HT40: %s", esp_err_to_name(err));
-
-    wifi_protocols_t sta_proto = {};
-    sta_proto.ghz_2g = WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AX;
-    err = esp_wifi_set_protocols(WIFI_IF_STA, &sta_proto);
-    log_e("STA protocol 11b/g/n/ax: %s", esp_err_to_name(err));
-}
+// Confirmed on real hardware via log_e() (ESP_LOGx is invisible on
+// this build -- CONFIG_ESP_CONSOLE_SECONDARY_NONE=y):
+//   esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW40) -> ESP_ERR_INVALID_ARG
+//   every single boot. 40MHz/HT40 is flatly rejected for softAP on
+//   this chip/SDK combination -- never actually took effect, so it
+//   bought nothing.
+//   esp_wifi_set_protocols(WIFI_IF_AP, ...WIFI_PROTOCOL_11AX...) ->
+//   ESP_OK, but boots became non-deterministically unstable right
+//   around this call (device resets, sometimes mid-sequence between
+//   the bandwidth and protocol calls, sometimes just after) -- a new
+//   failure mode not present before this change, unlike the earlier
+//   TCP-window crash's 100%-reproducible single failure point. Forcing
+//   11AX (WiFi 6/HE) onto the AP interface is the suspect, since it's
+//   the one call that both succeeded and sits right where the
+//   instability appeared.
+//
+// Reverted entirely rather than guessing which half is safe: no
+// bandwidth/protocol override is applied, leaving the driver's own
+// defaults (20MHz, 11b/g/n, no forced 11ax) in place. If revisited,
+// test forcing 11ax alone, in isolation, before trying HT40 again --
+// and expect HT40 on softAP needs a different API or config path
+// entirely given the flat ESP_ERR_INVALID_ARG, not just a retry.
 
 // The DHCP server only accepts option changes while stopped, and rejects a
 // range that contains the AP's own address or exceeds DHCPS_MAX_LEASE (100).
@@ -258,7 +243,6 @@ void wifi_sta_start(const String &ssid, const String &pass) {
     }
     ESP_LOGI(TAG, "STA connecting to: %s", ssid.c_str());
     WiFi.begin(ssid.c_str(), pass.c_str());
-    wifi_apply_sta_bandwidth();
 }
 
 bool wifi_sta_is_connected() {

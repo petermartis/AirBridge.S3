@@ -27,16 +27,6 @@ void wifi_ap_apply_dhcp_range(const APConfig &cfg);
 // be called after WiFi is started.
 void wifi_apply_tx_power(int8_t dbm);
 
-// Request 40MHz channel bandwidth and 11b/g/n/ax protocols on the AP
-// interface, instead of the driver's 20MHz-only default. Must be
-// called after the AP is started. Best-effort: logs and continues if
-// the driver rejects it, never fatal.
-void wifi_apply_bandwidth();
-
-// Same, for the STA uplink interface. Call after WiFi.begin(); the
-// actual negotiated width still depends on what the upstream AP supports.
-void wifi_apply_sta_bandwidth();
-
 // Offer `dns_addr` (IPv4, network byte order) to WiFi clients via the AP's
 // DHCP server, so they can resolve names through the uplink. No-op if 0.
 void wifi_ap_set_client_dns(uint32_t dns_addr);
