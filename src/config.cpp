@@ -20,7 +20,15 @@ void config_load(APConfig &cfg) {
     cfg.ip[3]      = prefs.getUChar("ip3", 1);
     cfg.dhcp_start = prefs.getUChar("dhcp_s", 2);
     cfg.dhcp_end   = prefs.getUChar("dhcp_e", 255);
-    cfg.tx_power_dbm = prefs.getChar("tx_pwr", 20);
+    // Default lowered from the radio's max (20dBm) after real-hardware
+    // testing traced a reboot loop to BROWNOUT resets (confirmed via
+    // esp_reset_reason(), logged over serial) right as the AP radio's
+    // PA ramps up to transmit its first beacon -- a marginal USB power
+    // supply/cable can't sustain that current spike at max power. This
+    // only changes the default for a config that's never been saved;
+    // existing installs keep whatever's already in flash and need the
+    // web UI's Radio -> TX Power setting changed directly.
+    cfg.tx_power_dbm = prefs.getChar("tx_pwr", 14);
 
     // WiFi repeater
     cfg.repeater_on  = prefs.getBool("rep_on", false);
