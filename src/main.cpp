@@ -23,22 +23,23 @@
 #include "usb_net.h"
 #include "nat.h"
 
-// Temporary bring-up diagnostic: bisecting a silent hang somewhere in
-// setup() on real S31 hardware. Real root cause of why no checkpoint
-// was ever showing up in the console, found on real hardware: this
-// board's configured log level filters out ESP_LOGI entirely --
-// Arduino's own Preferences.cpp errors were only ever visible because
-// they go through a different, always-on logging path (Arduino's
-// log_e()), not because anything of ours was failing to run. Fixed by
-// using ESP_LOGE here instead, which Preferences' own errors already
-// proved gets through. Also still drawing to the screen and setting
-// the onboard RGB LED to a distinct color per step, in case the
-// console turns out to still be lossy for an unrelated reason -- the
-// LED doesn't depend on SPI2_HOST at all, so it stays trustworthy even
-// if the bus itself turns out to be the thing that's broken. Remove
-// once the real hang/crash is found and fixed.
+// Temporary bring-up diagnostic: bisecting a reboot loop on real S31
+// hardware that only shows up once NAT/repeater mode is actually
+// carrying traffic, not at cold boot. ESP_LOGx is confirmed entirely
+// invisible on this build (CONFIG_ESP_CONSOLE_SECONDARY_NONE=y --
+// re-enabling USB-Serial/JTAG was tried and didn't produce a working
+// console either). log_e() is kept alongside it: Arduino's own
+// Preferences.cpp errors were always visible through log_e()'s
+// separate, always-on write path, never through ESP_LOGx -- this is
+// the first time *our own* code calls log_e() directly rather than
+// just observing Preferences' internal use of it, so this build is
+// also the test of whether that path is actually usable for our own
+// checkpoints or whether it's specific to Preferences somehow. Also
+// still drawing to the screen and setting the onboard RGB LED, since
+// neither depends on the console or SPI2_HOST. Remove once the real
+// crash is found and fixed.
 static const char *TAG_BOOT = "boot";
-#define BOOT_STEP(msg) do { ESP_LOGE(TAG_BOOT, msg); display_debug_step(msg); } while (0)
+#define BOOT_STEP(msg) do { ESP_LOGE(TAG_BOOT, msg); log_e("BOOT: %s", msg); display_debug_step(msg); } while (0)
 
 #ifdef RGB_BUILTIN
 #define LED_STEP(r, g, b) rgbLedWrite(RGB_BUILTIN, r, g, b)
@@ -139,16 +140,27 @@ void loop() {
         bool sta_online = wifi_sta_is_connected();
         bool has_uplink = usb_online || sta_online;
 
+        // Temporary bring-up diagnostic (see BOOT_STEP's comment): a
+        // heartbeat plus free-heap reading on every display-interval
+        // tick, so a reboot loop that only shows up once NAT/repeater
+        // traffic is flowing (not at cold boot) can be bisected --
+        // and so a low/falling heap reading can confirm or rule out
+        // memory exhaustion as the cause, directly, instead of
+        // guessing at buffer-size budgets again.
+        log_e("loop tick: heap=%u uplink=%d sta=%d", (unsigned)ESP.getFreeHeap(), has_uplink, sta_online);
+
         // Enable/disable NAT when uplink state changes
         if (has_uplink && !g_prev_has_uplink) nat_enable();
         else if (!has_uplink && g_prev_has_uplink) nat_disable();
         g_prev_has_uplink = has_uplink;
+        log_e("after NAT enable/disable");
 
         // Captive-portal DNS hijack must come down once a real uplink is
         // online -- left hijacking, it answers every WiFi client's DNS
         // query with this device's own IP forever, breaking internet
         // access even with NAT working.
         webserver_set_captive_portal(!has_uplink);
+        log_e("after captive_portal toggle");
 
         // WiFi clients need a real DNS server to resolve names through the
         // uplink; otherwise the AP advertises itself and nothing answers.
@@ -157,10 +169,12 @@ void loop() {
             if (dns == 0 && sta_online) dns = wifi_sta_dns_addr();
             wifi_ap_set_client_dns(dns);
         }
+        log_e("after set_client_dns");
 
         display_update(g_cfg, usb_online,
                        sta_online, wifi_sta_rssi(),
                        g_clients, g_client_count);
+        log_e("after display_update");
     }
     delay(1);
 }
