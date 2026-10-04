@@ -43,3 +43,24 @@ if(EXISTS ${_sdkconfig})
         message(STATUS "Re-appended Arduino USB OTG settings to sdkconfig")
     endif()
 endif()
+
+# Same strip-on-reconfigure problem as above, for esp32s31's lwIP TCP
+# buffer tuning (see sdkconfig.s31.defaults for why these values
+# matter -- NAT throughput was capped to roughly window/RTT, ~7Mbit/s
+# measured on real hardware against a 1Gbit/s upstream, by lwIP's
+# 5760-byte default window). Confirmed on this project: even a full
+# clean (deleting sdkconfig.esp32s31 and the entire .pio/build/
+# esp32s31 cache) still regenerates these at their raw Kconfig
+# defaults instead of sdkconfig.s31.defaults' values -- something in
+# this hybrid build's config generation doesn't apply board_build.
+# sdkconfig_defaults for these keys the way it does for most others.
+set(_sdkconfig_s31 "${CMAKE_CURRENT_SOURCE_DIR}/sdkconfig.esp32s31")
+if(EXISTS ${_sdkconfig_s31})
+    file(READ ${_sdkconfig_s31} _sdk_content_s31)
+    string(FIND "${_sdk_content_s31}" "CONFIG_LWIP_TCP_WND_DEFAULT=65535" _pos_s31)
+    if(_pos_s31 EQUAL -1)
+        file(APPEND ${_sdkconfig_s31}
+            "\nCONFIG_LWIP_TCP_SND_BUF_DEFAULT=65535\nCONFIG_LWIP_TCP_WND_DEFAULT=65535\nCONFIG_LWIP_TCP_RECVMBOX_SIZE=48\nCONFIG_LWIP_TCPIP_RECVMBOX_SIZE=64\n")
+        message(STATUS "Re-appended TCP buffer tuning to sdkconfig.esp32s31")
+    endif()
+endif()

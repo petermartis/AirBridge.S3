@@ -12,6 +12,27 @@ CONFIG_FREERTOS_HZ=1000
 CONFIG_LWIP_IP_FORWARD=y
 CONFIG_LWIP_IPV4_NAPT=y
 
+# --- TCP buffer/window tuning for NAT throughput ---
+# lwIP's own defaults here (5760-byte TCP window/send buffer, sized
+# for a RAM-constrained device's own local sockets) throttle a single
+# forwarded TCP connection to roughly window/RTT -- at a typical
+# ~20-40ms internet RTT, 5760 bytes caps one connection to only
+# 1-2Mbit/s, regardless of what the WiFi radio itself could carry.
+# Measured on real hardware: ~7Mbit/s through this device's repeater
+# mode against a 1Gbit/s upstream, far below what this chip's 802.11n/
+# ax 2.4GHz radio should support even while time-sharing AP+STA duty.
+# Raised to the maximum these can take without also enabling
+# LWIP_WND_SCALE (which requires PSRAM-backed WiFi/lwIP buffers, a
+# bigger and separately-risky change on this still-preview chip/IDF
+# combination, not applied here). TCPIP_RECVMBOX_SIZE is kept >= the
+# TCP one per this Kconfig's own guidance. RAM cost is small: mailbox
+# sizes are just pointer-queue depths, and SND/WND buffers scale with
+# active connection count, not a fixed allocation.
+CONFIG_LWIP_TCP_SND_BUF_DEFAULT=65535
+CONFIG_LWIP_TCP_WND_DEFAULT=65535
+CONFIG_LWIP_TCP_RECVMBOX_SIZE=48
+CONFIG_LWIP_TCPIP_RECVMBOX_SIZE=64
+
 # --- TinyUSB ECM networking (ECM preferred over NCM for macOS compatibility) ---
 CONFIG_TINYUSB_NET_MODE_ECM_RNDIS=y
 
