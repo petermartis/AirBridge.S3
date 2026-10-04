@@ -76,24 +76,33 @@ void wifi_apply_tx_power(int8_t dbm) {
 // upstream AP that can't do HT40, so the STA side gets overridden back
 // down once associated), log it and keep going rather than treat it as
 // fatal -- there is nothing in this path that should ever crash.
+//
+// Uses log_e(), not ESP_LOGI/ESP_LOGE: this build has no working
+// ESP-IDF console (CONFIG_ESP_CONSOLE_SECONDARY_NONE=y), so ESP_LOGx
+// is silently invisible here -- confirmed again the hard way when a
+// first version of this function logged via ESP_LOGI and a real
+// device's serial output showed setup() and loop() running fine but
+// not one line from here, leaving no way to tell whether these calls
+// even succeeded. log_e() is the one output path confirmed to reach
+// the serial console on this board (see main.cpp's BOOT_STEP).
 void wifi_apply_bandwidth() {
     esp_err_t err = esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW40);
-    ESP_LOGI(TAG, "AP bandwidth HT40: %s", esp_err_to_name(err));
+    log_e("AP bandwidth HT40: %s", esp_err_to_name(err));
 
     wifi_protocols_t ap_proto = {};
     ap_proto.ghz_2g = WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AX;
     err = esp_wifi_set_protocols(WIFI_IF_AP, &ap_proto);
-    ESP_LOGI(TAG, "AP protocol 11b/g/n/ax: %s", esp_err_to_name(err));
+    log_e("AP protocol 11b/g/n/ax: %s", esp_err_to_name(err));
 }
 
 void wifi_apply_sta_bandwidth() {
     esp_err_t err = esp_wifi_set_bandwidth(WIFI_IF_STA, WIFI_BW40);
-    ESP_LOGI(TAG, "STA bandwidth HT40: %s", esp_err_to_name(err));
+    log_e("STA bandwidth HT40: %s", esp_err_to_name(err));
 
     wifi_protocols_t sta_proto = {};
     sta_proto.ghz_2g = WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AX;
     err = esp_wifi_set_protocols(WIFI_IF_STA, &sta_proto);
-    ESP_LOGI(TAG, "STA protocol 11b/g/n/ax: %s", esp_err_to_name(err));
+    log_e("STA protocol 11b/g/n/ax: %s", esp_err_to_name(err));
 }
 
 // The DHCP server only accepts option changes while stopped, and rejects a
