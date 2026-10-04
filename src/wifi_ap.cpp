@@ -36,6 +36,7 @@ void wifi_ap_init(const APConfig &cfg) {
     ESP_LOGE(TAG, "softAP OK");
 
     wifi_apply_tx_power(cfg.tx_power_dbm);
+    wifi_apply_bandwidth();
 
     wifi_ap_apply_dhcp_range(cfg);
     ESP_LOGE(TAG, "apply_dhcp_range OK");
@@ -57,6 +58,42 @@ void wifi_apply_tx_power(int8_t dbm) {
     if (dbm < 2) dbm = 2;
     if (dbm > 20) dbm = 20;
     esp_wifi_set_max_tx_power(dbm * 4);
+}
+
+// Throughput lever deliberately separate from the lwIP TCP window/AMPDU
+// block-ack tuning abandoned in sdkconfig.s31.defaults (see its comment):
+// this is a runtime esp_wifi_* call on the radio's own PHY config, not a
+// Kconfig default that changes netif/lwIP memory allocated during AP+STA
+// bring-up -- the thing that caused the reboot loop. Softap defaults to
+// a 20MHz channel (WIFI_BW20) unless told otherwise; 40MHz (WIFI_BW40,
+// what 802.11 calls HT40/channel bonding) roughly doubles the
+// 802.11n/ax PHY rate ceiling. Also explicitly
+// enables 11AX (WiFi 6) and 11N on both interfaces in case this
+// pioarduino pre-release build's default protocol bitmap doesn't
+// already include them -- cheap to assert, and rules out a silent
+// fallback to legacy 11b/g rates as part of the same throughput gap.
+// Both calls are best-effort: if the driver rejects a setting (e.g. an
+// upstream AP that can't do HT40, so the STA side gets overridden back
+// down once associated), log it and keep going rather than treat it as
+// fatal -- there is nothing in this path that should ever crash.
+void wifi_apply_bandwidth() {
+    esp_err_t err = esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW40);
+    ESP_LOGI(TAG, "AP bandwidth HT40: %s", esp_err_to_name(err));
+
+    wifi_protocols_t ap_proto = {};
+    ap_proto.ghz_2g = WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AX;
+    err = esp_wifi_set_protocols(WIFI_IF_AP, &ap_proto);
+    ESP_LOGI(TAG, "AP protocol 11b/g/n/ax: %s", esp_err_to_name(err));
+}
+
+void wifi_apply_sta_bandwidth() {
+    esp_err_t err = esp_wifi_set_bandwidth(WIFI_IF_STA, WIFI_BW40);
+    ESP_LOGI(TAG, "STA bandwidth HT40: %s", esp_err_to_name(err));
+
+    wifi_protocols_t sta_proto = {};
+    sta_proto.ghz_2g = WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AX;
+    err = esp_wifi_set_protocols(WIFI_IF_STA, &sta_proto);
+    ESP_LOGI(TAG, "STA protocol 11b/g/n/ax: %s", esp_err_to_name(err));
 }
 
 // The DHCP server only accepts option changes while stopped, and rejects a
@@ -212,6 +249,7 @@ void wifi_sta_start(const String &ssid, const String &pass) {
     }
     ESP_LOGI(TAG, "STA connecting to: %s", ssid.c_str());
     WiFi.begin(ssid.c_str(), pass.c_str());
+    wifi_apply_sta_bandwidth();
 }
 
 bool wifi_sta_is_connected() {
