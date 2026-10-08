@@ -2,3 +2,21 @@
 dependencies:
   espressif/esp_tinyusb:
     version: "^2.0.0"
+  # USB host-mode RNDIS driver for Android USB tethering uplink,
+  # esp32s31 only. This manifest is shared between both envs (see
+  # src/CMakeLists.txt) -- an idf_component.yml dependency is injected
+  # as a priv_req of its owning component regardless of what's passed
+  # to idf_component_register()'s own REQUIRES, so scoping this with
+  # `rules` here is the only thing that actually keeps it out of the
+  # esp32s3geek build (confirmed the hard way: a CMakeLists.txt-level
+  # conditional REQUIRES had zero effect, per project_description.json
+  # still showing it as a priv_req on that target).
+  #
+  # Component registry lists esp32s31 as a supported target
+  # explicitly, but its own tested-device table only covers 4G
+  # modules, not phones -- real device validation against an actual
+  # tethered Android phone is still unverified.
+  espressif/iot_usbh_rndis:
+    version: "^0.5.0"
+    rules:
+      - if: "target == esp32s31"

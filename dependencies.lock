@@ -29,6 +29,16 @@ dependencies:
       registry_url: https://components.espressif.com/
       type: service
     version: 1.7.19~2
+  espressif/cmake_utilities:
+    component_hash: 05165f30922b422b4b90c08845e6d449329b97370fbd06309803d8cb539d79e3
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=4.1'
+    source:
+      registry_url: https://components.espressif.com
+      type: service
+    version: 1.1.1
   espressif/dm9051:
     component_hash: 52d13af7181a1d7cc2ca2958e640e395a1c825a8d6467540a526b8b7f115bdb4
     dependencies:
@@ -50,7 +60,7 @@ dependencies:
       type: service
     version: 1.8.2
   espressif/esp-modbus:
-    component_hash: a52eabcf5e1f81f16f730c70981e69338ea33aee9c44fa512c644d1d8942aa16
+    component_hash: 26a64a9531b5e15a1bbdb9064f2f8715df5b150bfb821dd493174a5aa7566bf8
     dependencies:
     - name: idf
       require: private
@@ -58,7 +68,7 @@ dependencies:
     source:
       registry_url: https://components.espressif.com/
       type: service
-    version: 2.1.3
+    version: 2.1.4
   espressif/esp-zigbee-lib:
     component_hash: d508f9b91c4b1973e6563fe840923fad2f15b23637f3d743dba1f5a719e1baab
     dependencies:
@@ -140,7 +150,7 @@ dependencies:
       type: service
     version: 2.1.0
   espressif/esp_rainmaker:
-    component_hash: 0f0f781677173826eee568d53f04b27e44fbe72c2bfc21929e4a5239fbe831d2
+    component_hash: 404b6fce47c5021a35550065a94ec66d766d0d2d31b79c3eead6b40d1dbff1cf
     dependencies:
     - name: espressif/cbor
       registry_url: https://components.espressif.com
@@ -176,14 +186,14 @@ dependencies:
     - name: espressif/rmaker_common
       registry_url: https://components.espressif.com
       require: private
-      version: '>=1.8.2'
+      version: '>=1.9.0'
     - name: idf
       require: private
       version: '>=5.1'
     source:
       registry_url: https://components.espressif.com/
       type: service
-    version: 1.16.1
+    version: 1.17.0
   espressif/esp_schedule:
     component_hash: 52d305300abcee86034c309eb200feb2dfbc95fcbfc5b7b9dcd137763a995dbf
     dependencies:
@@ -209,7 +219,7 @@ dependencies:
       type: service
     version: 2.9.3
   espressif/esp_tinyusb:
-    component_hash: 0fab24246e07bdf919c6489d17a590cffbffbbf6a9c44d6235641645c8b946b7
+    component_hash: cfb066b239957ebfba5f7a7764e534b3000d3b400fd42d11bedb6ee5e6eaf3c9
     dependencies:
     - name: idf
       require: private
@@ -227,7 +237,74 @@ dependencies:
     - esp32p4
     - esp32h4
     - esp32s31
-    version: 2.3.0
+    version: 2.4.0
+  espressif/iot_eth:
+    component_hash: 3be03ff933e27e17887becbed16305a561b35b66a5a4978ac51ae7f9f2ec70ea
+    dependencies:
+    - name: espressif/cmake_utilities
+      registry_url: https://components.espressif.com
+      require: private
+      version: '*'
+    - name: idf
+      require: private
+      version: '>=4.4'
+    source:
+      registry_url: https://components.espressif.com
+      type: service
+    version: 1.1.0
+  espressif/iot_usbh_cdc:
+    component_hash: e924a79e9b7926b38bee52234d9f90101d8926f5e560dd5edf51c395546eac87
+    dependencies:
+    - name: espressif/cmake_utilities
+      registry_url: https://components.espressif.com
+      require: private
+      version: '*'
+    - name: espressif/usb
+      registry_url: https://components.espressif.com
+      require: public
+      rules:
+      - if: idf_version >=6.0
+      - if: target not in ["linux"]
+      version: ^1.4.0
+    - name: idf
+      require: private
+      version: '>=5.1'
+    source:
+      registry_url: https://components.espressif.com
+      type: service
+    targets:
+    - esp32s2
+    - esp32s3
+    - esp32s31
+    - esp32p4
+    version: 3.1.0
+  espressif/iot_usbh_rndis:
+    component_hash: 87d4041d93a0a74be31972dfc22082714ff2adcfc31e59ac9f11efa552e030b5
+    dependencies:
+    - name: espressif/cmake_utilities
+      registry_url: https://components.espressif.com
+      require: private
+      version: '*'
+    - name: espressif/iot_eth
+      registry_url: https://components.espressif.com
+      require: public
+      version: '*'
+    - name: espressif/iot_usbh_cdc
+      registry_url: https://components.espressif.com
+      require: public
+      version: ^3.1
+    - name: idf
+      require: private
+      version: '>=5.2'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    targets:
+    - esp32s2
+    - esp32s3
+    - esp32s31
+    - esp32p4
+    version: 0.5.0
   espressif/jsmn:
     component_hash: d80350c41bbaa827c98a25b6072df00884e72f54885996fab4a4f0aebce6b6c3
     dependencies:
@@ -279,7 +356,7 @@ dependencies:
       type: service
     version: 1.0.22~1
   espressif/mdns:
-    component_hash: b679eafd0acae2066e2645bd91d073e33ca5be515e2545cd3c4e55a3e3bce3cb
+    component_hash: b5b30022c46302eab89c1d2e3b6fb5918a627563a7462f0ee284b22b9a934967
     dependencies:
     - name: idf
       require: private
@@ -287,7 +364,7 @@ dependencies:
     source:
       registry_url: https://components.espressif.com/
       type: service
-    version: 1.13.1
+    version: 1.14.0
   espressif/mqtt:
     component_hash: fb18bc3b65aa8c94693a9811ffc322cca8a65d92d5ec84983d3e385080e3969c
     dependencies:
@@ -453,6 +530,23 @@ dependencies:
     - esp32h4
     - esp32s31
     version: 0.21.0~2
+  espressif/usb:
+    component_hash: 99eee72ea224d9117d4c342442717a1f20bf8112e2ab5d7d7038b827874f4c92
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.5.3'
+    source:
+      registry_url: https://components.espressif.com
+      type: service
+    targets:
+    - esp32s2
+    - esp32s3
+    - esp32s31
+    - esp32p4
+    - esp32h4
+    - linux
+    version: 1.6.0
   espressif/w5500:
     component_hash: e6e47022a1f509d1d1197652a554aea84a8cd4d99161061e187ecf4b78a7f6ca
     dependencies:
@@ -488,6 +582,7 @@ direct_dependencies:
 - espressif/esp_modem
 - espressif/esp_rainmaker
 - espressif/esp_tinyusb
+- espressif/iot_usbh_rndis
 - espressif/ksz8851snl
 - espressif/libsodium
 - espressif/mdns
@@ -495,6 +590,6 @@ direct_dependencies:
 - espressif/w5500
 - idf
 - joltwallet/littlefs
-manifest_hash: 95d17f91e8b2a5515c45f06be43d05ec5528af3c41ef1b8c34e595ba71e00135
+manifest_hash: 21ff346913e9280de3ea7c05ff481fc1e09cf7d6a4126a8a353348f2ec47bff4
 target: esp32s31
 version: 3.0.0

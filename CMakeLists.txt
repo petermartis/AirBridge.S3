@@ -72,4 +72,13 @@ if(EXISTS ${_sdkconfig_s31})
             "\nCONFIG_ESP_WIFI_TX_BA_WIN=12\nCONFIG_ESP_WIFI_RX_BA_WIN=12\n")
         message(STATUS "Re-appended WiFi BA window throughput tuning to sdkconfig.esp32s31")
     endif()
+    # iot_usbh_rndis's control-transfer buffer must be >= its own
+    # RNDIS_CONTROL_BUFFER_SIZE (1025) or it's a compile-time #error.
+    # Same stale-sdkconfig bug as above hit this key too.
+    string(FIND "${_sdk_content_s31}" "CONFIG_USBH_CDC_CONTROL_TRANSFER_BUFFER_SIZE=1025" _pos_rndis)
+    if(_pos_rndis EQUAL -1)
+        file(APPEND ${_sdkconfig_s31}
+            "\nCONFIG_USBH_CDC_CONTROL_TRANSFER_BUFFER_SIZE=1025\n")
+        message(STATUS "Re-appended RNDIS control-buffer-size fix to sdkconfig.esp32s31")
+    endif()
 endif()

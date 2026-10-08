@@ -49,6 +49,11 @@ overrides = [
     "CONFIG_LWIP_TCPIP_RECVMBOX_SIZE=64",
     "CONFIG_ESP_WIFI_TX_BA_WIN=12",
     "CONFIG_ESP_WIFI_RX_BA_WIN=12",
+    # iot_usbh_rndis requires this at RNDIS_CONTROL_BUFFER_SIZE (1025)
+    # or larger, or it's a compile-time #error -- same stale-sdkconfig
+    # bug hit this key too, confirmed via a build that still showed the
+    # component's own stock default (256) in sdkconfig.h afterward.
+    "CONFIG_USBH_CDC_CONTROL_TRANSFER_BUFFER_SIZE=1025",
 ]
 
 if os.path.isfile(sdkconfig_path):

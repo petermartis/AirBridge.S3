@@ -11,6 +11,21 @@ elseif(_airbridge_target STREQUAL "esp32s31")
     list(REMOVE_ITEM app_sources ${CMAKE_SOURCE_DIR}/src/display_s3geek.cpp)
 endif()
 
+# iot_usbh_rndis (Android USB-tethering uplink) is esp32s31-only.
+# Needs BOTH halves of this, confirmed the hard way:
+#  1. idf_component.yml's `rules: - if: "target == esp32s31"` --
+#     without it, a manifest dependency is injected as a priv_req of
+#     its owning component regardless of what's in REQUIRES below, so
+#     excluding it from REQUIRES alone does nothing on esp32s3geek.
+#  2. This conditional -- without it, once (1) correctly excludes the
+#     component from esp32s3geek's dependency graph, an unconditional
+#     REQUIRES fails CMake configure outright ("unknown name"), since
+#     the component genuinely isn't resolved for that target at all.
+set(_usbh_rndis_requires "")
+if(_airbridge_target STREQUAL "esp32s31")
+    set(_usbh_rndis_requires iot_usbh_rndis)
+endif()
+
 idf_component_register(
     SRCS ${app_sources}
     INCLUDE_DIRS "."
@@ -24,4 +39,5 @@ idf_component_register(
         esp_driver_spi
         esp_driver_gpio
         tinyusb
+        ${_usbh_rndis_requires}
 )

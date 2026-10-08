@@ -43,6 +43,13 @@ CONFIG_LWIP_TCPIP_RECVMBOX_SIZE=64
 CONFIG_ESP_WIFI_TX_BA_WIN=12
 CONFIG_ESP_WIFI_RX_BA_WIN=12
 
+# --- USB host RNDIS (Android USB tethering uplink) ---
+# iot_usbh_rndis requires its control-transfer buffer to fit an RNDIS
+# control response (RNDIS_CONTROL_BUFFER_SIZE = 1025 bytes); the
+# component's own default of 256 is a compile-time #error, not a
+# runtime failure, so this isn't optional tuning.
+CONFIG_USBH_CDC_CONTROL_TRANSFER_BUFFER_SIZE=1025
+
 # --- TinyUSB ECM networking (ECM preferred over NCM for macOS compatibility) ---
 CONFIG_TINYUSB_NET_MODE_ECM_RNDIS=y
 
