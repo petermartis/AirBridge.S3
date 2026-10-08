@@ -1,28 +1,23 @@
 """
 Pre-build script for PlatformIO (env:esp32s31 only).
 
-Explicitly re-asserts stock lwIP TCP buffer and WiFi AMPDU block-ack
-window values in sdkconfig.esp32s31, *before* CMake/confgen runs, not
-after. These are reverts, not tuning: every attempt to raise them
-caused boot/reboot loops on real hardware, including a 100%-
-reproducible crash at 16384 (and also at 65535) -- every single boot
-reaching exactly "wifi_ap_init OK" and dying before "wifi_sta_start
-OK" ever printed, right where WiFi.begin() starts STA association
-while AP mode is already up. Raising the AMPDU block-ack window
-(TX/RX_BA_WIN) to 12 was tested independently and reverting it alone
-did NOT fix the crash, ruling it out and leaving the TCP window as
-the implicated cause -- most likely because lwIP needs more memory up
-front to bring up a second network interface (STA, on top of the
-already-running AP) when these buffer defaults are larger, not just a
-per-active-connection cost as originally assumed. See
-sdkconfig.s31.defaults for the full investigation.
+Explicitly re-asserts the lwIP TCP buffer and WiFi AMPDU block-ack
+window values from sdkconfig.s31.defaults into sdkconfig.esp32s31,
+*before* CMake/confgen runs, not after. See sdkconfig.s31.defaults for
+the full history: these were raised for throughput, then abandoned
+after a reboot loop that was later root-caused (via esp_reset_reason()
+logged over serial) to a BROWNOUT on a marginal USB power supply, not
+these values -- it reproduced identically whether these were at their
+raised values, a more conservative halfway point, or fully stock. Now
+re-raised, with a proper power supply confirmed stable.
 
-These values must be explicitly re-asserted at their stock defaults,
-not just removed from this script: a device that already had a larger
-value appended by a previous build of this project would otherwise
-keep that as the winning (last) occurrence in sdkconfig.esp32s31
-forever, since this script (and CMakeLists.txt's matching fallback)
-work by appending the last, and so winning, occurrence of each key.
+These values must be explicitly asserted here, not left to
+sdkconfig.s31.defaults alone: a device that already has a *different*
+value appended by a previous build of this project (e.g. the stock
+values from when this was reverted) would otherwise keep that as the
+winning (last) occurrence in sdkconfig.esp32s31 forever, since this
+script (and CMakeLists.txt's matching fallback) work by appending the
+last, and so winning, occurrence of each key.
 
 Why this exists at all: board_build.sdkconfig_defaults isn't reliably
 applied for these specific keys in this hybrid Arduino+ESP-IDF build
@@ -45,13 +40,15 @@ Import("env")
 project_dir = env.subst("$PROJECT_DIR")
 sdkconfig_path = os.path.join(project_dir, "sdkconfig.esp32s31")
 
-# All reverts to stock Kconfig defaults -- see the module docstring.
+# Must match sdkconfig.s31.defaults -- see the module docstring and
+# that file's comment for the throughput/brownout history.
 overrides = [
-    "CONFIG_LWIP_TCP_SND_BUF_DEFAULT=5760",
-    "CONFIG_LWIP_TCP_WND_DEFAULT=5760",
-    "CONFIG_LWIP_TCP_RECVMBOX_SIZE=6",
-    "CONFIG_ESP_WIFI_TX_BA_WIN=6",
-    "CONFIG_ESP_WIFI_RX_BA_WIN=6",
+    "CONFIG_LWIP_TCP_SND_BUF_DEFAULT=65535",
+    "CONFIG_LWIP_TCP_WND_DEFAULT=65535",
+    "CONFIG_LWIP_TCP_RECVMBOX_SIZE=48",
+    "CONFIG_LWIP_TCPIP_RECVMBOX_SIZE=64",
+    "CONFIG_ESP_WIFI_TX_BA_WIN=12",
+    "CONFIG_ESP_WIFI_RX_BA_WIN=12",
 ]
 
 if os.path.isfile(sdkconfig_path):

@@ -12,29 +12,36 @@ CONFIG_FREERTOS_HZ=1000
 CONFIG_LWIP_IP_FORWARD=y
 CONFIG_LWIP_IPV4_NAPT=y
 
-# --- TCP buffer/window tuning for NAT throughput: ABANDONED ---
-# lwIP's own defaults here (5760-byte TCP window/send buffer) throttle
-# NAT throughput on real hardware (~7Mbit/s measured against a
-# 1Gbit/s upstream), but every attempt to raise them caused a boot/
-# reboot loop on real hardware, including a deterministic crash
-# (every single boot reaching exactly "wifi_ap_init OK" and dying
-# before "wifi_sta_start OK" -- right where WiFi.begin() starts STA
-# association while AP mode is already up) at BOTH 65535 and a more
-# conservative 16384. The AMPDU block-ack window (TX/RX_BA_WIN) was
-# also raised and reverted during this investigation and tested
-# independently -- reverting it alone did NOT fix the crash, ruling
-# it out and re-implicating the TCP window as the actual cause, most
-# likely because lwIP needs more memory up front to bring up a SECOND
-# network interface (STA, on top of the already-running AP) when
-# these buffer defaults are larger, not just a per-active-connection
-# cost as originally assumed.
+# --- TCP buffer/window + AMPDU block-ack window tuning for NAT throughput ---
+# lwIP's own defaults here (5760-byte TCP window/send buffer, BA window
+# 6) throttle throughput on real hardware (~7-11Mbit/s measured against
+# a 1Gbit/s upstream). Raising both was tried and abandoned earlier in
+# this project's history after a 100%-reproducible crash (every boot
+# reaching exactly "wifi_ap_init OK" and dying before "wifi_sta_start
+# OK") -- but that crash was later root-caused, independently, via
+# esp_reset_reason() logged over serial, to a BROWNOUT reset: a current
+# spike as the AP radio's PA ramps up to transmit its first beacon,
+# tripping the chip's brownout detector on a marginal USB power supply.
+# It reproduced identically at every TCP window value tried (65535,
+# 16384, and fully reverted to stock 5760) and with the BA window at
+# both 6 and 12 -- conclusive that neither of these values was ever the
+# actual cause. They were reverted over a false correlation.
 #
-# Fully reverted to stock (nothing overridden here) to restore the
-# last confirmed-stable configuration. If throughput tuning is
-# revisited, test the TCP window change in isolation, on its own,
-# rather than bundled with anything else -- and expect that even
-# values well under 65535 may still not be safe through the AP+STA
-# startup transition specifically.
+# Re-raising both now that a proper power supply (5V/5A, not a laptop's
+# USB port) is confirmed to boot cleanly through the same point
+# repeatedly with no BROWNOUT in the log. TX/RX_BA_WIN=12 and
+# TCPIP_RECVMBOX_SIZE=64 match ESP-IDF's own documented throughput
+# recommendations ("For iperf test in shieldbox, the recommended value
+# is 9~12" for BA window). If a real crash reappears, check
+# esp_reset_reason() in the log FIRST, before assuming it's one of
+# these values again -- BROWNOUT was caught and mistaken for a software
+# bug once already in this project.
+CONFIG_LWIP_TCP_SND_BUF_DEFAULT=65535
+CONFIG_LWIP_TCP_WND_DEFAULT=65535
+CONFIG_LWIP_TCP_RECVMBOX_SIZE=48
+CONFIG_LWIP_TCPIP_RECVMBOX_SIZE=64
+CONFIG_ESP_WIFI_TX_BA_WIN=12
+CONFIG_ESP_WIFI_RX_BA_WIN=12
 
 # --- TinyUSB ECM networking (ECM preferred over NCM for macOS compatibility) ---
 CONFIG_TINYUSB_NET_MODE_ECM_RNDIS=y

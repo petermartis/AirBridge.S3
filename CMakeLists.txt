@@ -47,30 +47,29 @@ endif()
 # Same strip-on-reconfigure problem as above, for esp32s31's lwIP TCP
 # buffer and WiFi AMPDU block-ack window settings -- see
 # patch_sdkconfig_s31.py (which runs before this, earlier in the
-# build, and does the same job) for the full investigation. Both are
-# REVERTS to stock Kconfig defaults, not tuning: raising the TCP
-# window (tried at both 65535 and a more conservative 16384) and
-# separately the AMPDU window (tried at 12) each independently caused
-# a 100%-reproducible crash -- boot reaching exactly "wifi_ap_init OK"
-# every time and dying before "wifi_sta_start OK" ever printed, right
-# where WiFi.begin() starts STA association while AP mode is already
-# up. Must be explicitly re-appended at their stock values, not just
-# removed from this script, or an already-appended larger value from
-# a previous build of this project stays the winning (last)
-# occurrence in sdkconfig.esp32s31 forever.
+# build, and does the same job) and sdkconfig.s31.defaults (for the
+# full throughput/brownout history) for why these values, not stock.
+# A reboot loop seen earlier with these raised was later root-caused
+# to a BROWNOUT on a marginal USB power supply, not these values --
+# it reproduced identically at every value tried, including fully
+# stock. Must be explicitly appended, not just set in
+# sdkconfig.s31.defaults, or an already-appended *different* value
+# from a previous build of this project (stock, from when this was
+# reverted) stays the winning (last) occurrence in sdkconfig.esp32s31
+# forever.
 set(_sdkconfig_s31 "${CMAKE_CURRENT_SOURCE_DIR}/sdkconfig.esp32s31")
 if(EXISTS ${_sdkconfig_s31})
     file(READ ${_sdkconfig_s31} _sdk_content_s31)
-    string(FIND "${_sdk_content_s31}" "CONFIG_LWIP_TCP_WND_DEFAULT=5760" _pos_s31)
+    string(FIND "${_sdk_content_s31}" "CONFIG_LWIP_TCP_WND_DEFAULT=65535" _pos_s31)
     if(_pos_s31 EQUAL -1)
         file(APPEND ${_sdkconfig_s31}
-            "\nCONFIG_LWIP_TCP_SND_BUF_DEFAULT=5760\nCONFIG_LWIP_TCP_WND_DEFAULT=5760\nCONFIG_LWIP_TCP_RECVMBOX_SIZE=6\n")
-        message(STATUS "Re-appended TCP buffer stock revert to sdkconfig.esp32s31")
+            "\nCONFIG_LWIP_TCP_SND_BUF_DEFAULT=65535\nCONFIG_LWIP_TCP_WND_DEFAULT=65535\nCONFIG_LWIP_TCP_RECVMBOX_SIZE=48\nCONFIG_LWIP_TCPIP_RECVMBOX_SIZE=64\n")
+        message(STATUS "Re-appended TCP buffer throughput tuning to sdkconfig.esp32s31")
     endif()
-    string(FIND "${_sdk_content_s31}" "CONFIG_ESP_WIFI_RX_BA_WIN=6" _pos_ba)
+    string(FIND "${_sdk_content_s31}" "CONFIG_ESP_WIFI_RX_BA_WIN=12" _pos_ba)
     if(_pos_ba EQUAL -1)
         file(APPEND ${_sdkconfig_s31}
-            "\nCONFIG_ESP_WIFI_TX_BA_WIN=6\nCONFIG_ESP_WIFI_RX_BA_WIN=6\n")
-        message(STATUS "Re-appended WiFi BA window stock revert to sdkconfig.esp32s31")
+            "\nCONFIG_ESP_WIFI_TX_BA_WIN=12\nCONFIG_ESP_WIFI_RX_BA_WIN=12\n")
+        message(STATUS "Re-appended WiFi BA window throughput tuning to sdkconfig.esp32s31")
     endif()
 endif()
